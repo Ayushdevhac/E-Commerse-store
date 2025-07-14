@@ -17,8 +17,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: [true, "Password is required"],
     minlength: [8, "Password must be at least 8 characters long"],
-  }, 
-  cartItems: [
+  },   cartItems: [
     {
         quantity: {
             type: Number,
@@ -30,6 +29,12 @@ const userSchema = new mongoose.Schema({
         }
     }
   ] ,
+  wishlist: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Product',
+    }
+  ],
   role:{
     type: String,
     enum: ['customer', 'admin'],

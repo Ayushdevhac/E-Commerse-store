@@ -1,12 +1,76 @@
+import { Navigate, Route, Routes } from "react-router-dom";
 
+import HomePage from "./pages/HomePage";
+import SignUpPage from "./pages/SignUpPage";
+import LoginPage from "./pages/LoginPage";
+import AdminPage from "./pages/AdminPage";
+import CategoryPage from "./pages/CategoryPage";
+import ProductDetailPage from "./pages/ProductDetailPage";
+import WishlistPage from "./pages/WishlistPage";
+
+import Navbar from "./components/Navbar";
+import { Toaster } from "react-hot-toast";
+import { useUserStore } from "./stores/useUserStore";
+import { useEffect } from "react";
+import LoadingSpinner from "./components/LoadingSpinner";
+import CartPage from "./pages/CartPage";
+import { useCartStore } from "./stores/useCartStore";
+import { useWishlistStore } from "./stores/useWishlistStore";
+import PurchaseSuccessPage from "./pages/PurchaseSuccessPage";
+import PurchaseCancelPage from "./pages/PurchaseCancelPage";
 
 function App() {
+	const { user, checkAuth, checkingAuth } = useUserStore();
+	const { getCartItems } = useCartStore();
+	const { getWishlist } = useWishlistStore();
+	useEffect(() => {
+		checkAuth();
+	}, [checkAuth]);
 
-  return (
-  <div className='text-red-500 text-5xl'>
-    Hello world
-  </div>
-  )
+	useEffect(() => {
+		if (!user) return;
+
+		getCartItems();
+		getWishlist();
+	}, [getCartItems, getWishlist, user]);
+
+	if (checkingAuth) return <LoadingSpinner />;
+
+	return (
+		<div className='min-h-screen bg-gray-900 text-white relative'>
+			{/* Background gradient - fixed to cover full page */}
+			<div className='fixed inset-0 w-full h-full overflow-hidden pointer-events-none z-0'>
+				<div className='absolute inset-0 bg-gray-900'>
+					<div className='absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-[radial-gradient(ellipse_at_top,rgba(16,185,129,0.3)_0%,rgba(10,80,60,0.2)_45%,rgba(0,0,0,0.1)_100%)]' />
+				</div>
+			</div>
+
+			<div className='relative z-10'>
+				<Navbar />
+				<div className='pt-20'>
+					<Routes>
+					<Route path='/' element={<HomePage />} />
+					<Route path='/signup' element={!user ? <SignUpPage /> : <Navigate to='/' />} />
+					<Route path='/login' element={!user ? <LoginPage /> : <Navigate to='/' />} />
+					<Route
+						path='/secret-dashboard'
+						element={user?.role === "admin" ? <AdminPage /> : <Navigate to='/login' />}
+					/>
+					<Route path='/category/:category' element={<CategoryPage />} />
+					<Route path='/product/:id' element={<ProductDetailPage />} />
+					<Route path='/wishlist' element={user ? <WishlistPage /> : <Navigate to='/login' />} />
+					<Route path='/cart' element={user ? <CartPage /> : <Navigate to='/login' />} />
+					<Route
+						path='/purchase-success'
+						element={user ? <PurchaseSuccessPage /> : <Navigate to='/login' />}
+					/>
+					<Route path='/purchase-cancel' element={user ? <PurchaseCancelPage /> : <Navigate to='/login' />} />
+				</Routes>
+				</div>
+			</div>
+			<Toaster />
+		</div>
+	);
 }
 
-export default App
+export default App;

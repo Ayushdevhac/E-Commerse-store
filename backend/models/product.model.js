@@ -10,7 +10,7 @@ description: {
     type: String,
     required: [true, "Product description is required"],
 },  
-prize:{
+price:{
     type: Number,
     required: [true, "Product price is required"],
     min: [0, "Price must be a positive number"],

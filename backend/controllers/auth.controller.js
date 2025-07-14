@@ -1,5 +1,5 @@
 import User from '../models/user.model.js';
-import { client } from '../lib/redis.js';
+import { client, ensureRedisConnection } from '../lib/redis.js';
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 dotenv.config();
@@ -10,27 +10,30 @@ const generateToken = (userId) => {
 }    
 const storerefreshToken = async (userId, refreshToken) => {
     try {     
-        await client.connect();
+        const isConnected = await ensureRedisConnection();
+        if (!isConnected) {
+            console.warn('Redis not available, skipping refresh token storage');
+            return;
+        }
+        
         await client.set(`refresh_token:${userId}`, refreshToken, "EX", 7 * 24 * 60 * 60);
     }
     catch (error) {
         console.error('Error storing refresh token:', error);
     } 
-    // Removed deprecated client.disconnect()
 }
-
 
 const setcookies = (res, accessToken, refreshToken) => {
     res.cookie('accessToken', accessToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-        sameSite: 'Strict', // Adjust as needed
+        sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax', // Allow cross-site cookies for Stripe redirects
         maxAge: 15 * 60 * 1000, // 15 minutes
     });
     res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-        sameSite: 'Strict', // Adjust as needed
+        sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax', // Allow cross-site cookies for Stripe redirects
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 }
@@ -85,7 +88,7 @@ export const login = async (req,res) => {
         });
     }
     else {
-        return res.status(401).json({ message: 'Invalid email or password' });
+        return res.status(400).json({ message: 'Invalid email or password' });
     }
    } catch (error) {
     console.error('Login error:', error);
@@ -106,8 +109,10 @@ export const logout = async (req, res) => {
     const refreshToken = req.cookies.refreshToken;
     if (refreshToken) {
       const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
-      await client.connect();
-      await client.del(`refresh_token:${decoded.userId}`); 
+      const isConnected = await ensureRedisConnection();
+      if (isConnected) {
+        await client.del(`refresh_token:${decoded.userId}`);
+      }
     }
 
     res.clearCookie('accessToken', {
@@ -124,6 +129,7 @@ export const logout = async (req, res) => {
     res.status(200).json({ message: 'Logged out successfully' });
   } catch (error) {
     console.error('Logout error:', error.message);
+
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -134,10 +140,14 @@ export const refreshToken = async (req, res) => {
         const refreshToken = req.cookies.refreshToken;
         if (!refreshToken) {
             return res.status(401).json({ message: 'No refresh token provided' });
-        }
-        const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+        }        const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
         const userId = decoded.userId;
-        client.connect();
+        
+        const isConnected = await ensureRedisConnection();
+        if (!isConnected) {
+            return res.status(503).json({ message: 'Service temporarily unavailable' });
+        }
+        
         const storedRefreshToken = await client.get(`refresh_token:${userId}`);
         if (refreshToken !== storedRefreshToken) {
             return res.status(403).json({ message: 'Invalid refresh token' });
