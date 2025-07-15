@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "vercel-build": "vite build"
+    "vercel-build": "npm run build"
   },
   "dependencies": {
     "@stripe/stripe-js": "^7.4.0",

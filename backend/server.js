@@ -266,28 +266,43 @@ process.on('SIGTERM', async () => {
 
 process.on('SIGINT', async () => {
     console.log('SIGINT received, shutting down gracefully');
-    await disconnectRedis();
-    process.exit(0);
+    await disconnectRedis();    process.exit(0);
 });
 
-app.listen(PORT, async () => {
-    console.log('Server is running on http://localhost:'+PORT);
-    
-    // Initialize core services
-    await connectDB();
-    await connectRedis();
-    
-    // Initialize security
-    const securityInit = await initializeSecurity();
-    if (securityInit.success) {
-        console.log('✅ Security initialization completed');
-        if (process.env.NODE_ENV === 'development') {
-            console.log('🔐 Master API Key:', securityInit.masterApiKey);
+// Initialize services
+const initializeServices = async () => {
+    try {
+        await connectDB();
+        await connectRedis();
+        
+        const securityInit = await initializeSecurity();
+        if (securityInit.success) {
+            console.log('✅ Security initialization completed');
+            if (process.env.NODE_ENV === 'development') {
+                console.log('🔐 Master API Key:', securityInit.masterApiKey);
+            }
+        } else {
+            console.error('❌ Security initialization failed:', securityInit.error);
         }
-    } else {
-        console.error('❌ Security initialization failed:', securityInit.error);
+        
+        console.log('🚀 E-commerce server ready with enhanced security!');
+    } catch (error) {
+        console.error('❌ Service initialization failed:', error);
     }
-    
-    console.log('🚀 E-commerce server ready with enhanced security!');
-});
+};
+
+// For Vercel serverless deployment
+if (process.env.VERCEL) {
+    // Initialize services once for serverless
+    initializeServices();
+} else {
+    // Traditional server for local development
+    app.listen(PORT, async () => {
+        console.log('Server is running on http://localhost:'+PORT);
+        await initializeServices();
+    });
+}
+
+// Export for Vercel
+export default app;
 

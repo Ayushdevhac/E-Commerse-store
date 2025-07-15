@@ -5,10 +5,9 @@
   "scripts": {
     "dev": "nodemon backend/server.js",
     "start": "node backend/server.js",
+    "build": "cd frontend && npm run build",
     "auto-complete": "node backend/scripts/autoCompleteOrders.js",
-    "check-orders": "node backend/scripts/checkOrders.js",
-    "test-completed-reviews": "node backend/scripts/testCompletedOrderReviews.js",
-    "test-atlas": "node backend/scripts/testAtlasConnection.js"
+    "check-orders": "node backend/scripts/checkOrders.js"
   },
   "keywords": [],
   "author": "",
