@@ -2,15 +2,132 @@ import { client } from '../lib/redis.js';
 import { ensureRedisConnection } from '../lib/redis.js';
 import cloudinary from '../lib/cloudinary.js';
 import Product from '../models/product.model.js';
-export const getAllProducts = async (_req, res) => {
+import { body, param, query, validationResult } from 'express-validator';
+import mongoose from 'mongoose';
+
+// Validation rules
+export const validateProductCreation = [
+    body('name')
+        .trim()
+        .isLength({ min: 2, max: 100 })
+        .withMessage('Product name must be between 2 and 100 characters')
+        .escape(),
+    body('price')
+        .isFloat({ min: 0.01, max: 999999 })
+        .withMessage('Price must be between 0.01 and 999999'),
+    body('description')
+        .trim()
+        .isLength({ min: 10, max: 1000 })
+        .withMessage('Description must be between 10 and 1000 characters')
+        .escape(),
+    body('category')
+        .trim()
+        .isLength({ min: 2, max: 50 })
+        .withMessage('Category must be between 2 and 50 characters')
+        .escape(),
+    body('image')
+        .notEmpty()
+        .withMessage('Image is required')
+];
+
+export const validateProductId = [
+    param('id')
+        .isMongoId()
+        .withMessage('Invalid product ID format')
+];
+
+export const validatePagination = [
+    query('page')
+        .optional()
+        .isInt({ min: 1, max: 1000 })
+        .withMessage('Page must be between 1 and 1000'),
+    query('limit')
+        .optional()
+        .isInt({ min: 1, max: 100 })
+        .withMessage('Limit must be between 1 and 100'),
+    query('sort')
+        .optional()
+        .isIn(['price', 'name', 'createdAt', '-price', '-name', '-createdAt'])
+        .withMessage('Invalid sort field')
+];
+
+// Enhanced getAllProducts with pagination, filtering, and sorting
+export const getAllProducts = async (req, res) => {
     try {
-        const products = await Product.find({});
-        res.status(200).json(products);
+        // Check for validation errors
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                message: 'Validation error',
+                errors: errors.array()
+            });
+        }
+
+        const page = parseInt(req.query.page) || 1;
+        const limit = Math.min(parseInt(req.query.limit) || 12, 100); // Max 100 items per page
+        const skip = (page - 1) * limit;
+        const sort = req.query.sort || '-createdAt';
+        const category = req.query.category;
+        const minPrice = parseFloat(req.query.minPrice) || 0;
+        const maxPrice = parseFloat(req.query.maxPrice) || Number.MAX_VALUE;
+        const search = req.query.search;
+
+        // Build filter object
+        const filter = {
+            price: { $gte: minPrice, $lte: maxPrice }
+        };
+
+        if (category && category !== 'all') {
+            filter.category = new RegExp(category, 'i');
+        }
+
+        if (search) {
+            filter.$or = [
+                { name: new RegExp(search, 'i') },
+                { description: new RegExp(search, 'i') },
+                { category: new RegExp(search, 'i') }
+            ];
+        }
+
+        // Execute queries in parallel
+        const [products, totalProducts] = await Promise.all([
+            Product.find(filter)
+                .sort(sort)
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            Product.countDocuments(filter)
+        ]);
+
+        const totalPages = Math.ceil(totalProducts / limit);
+        const hasNextPage = page < totalPages;
+        const hasPrevPage = page > 1;
+
+        res.status(200).json({
+            products,
+            pagination: {
+                currentPage: page,
+                totalPages,
+                totalProducts,
+                limit,
+                hasNextPage,
+                hasPrevPage,
+                nextPage: hasNextPage ? page + 1 : null,
+                prevPage: hasPrevPage ? page - 1 : null
+            },
+            filters: {
+                category,
+                minPrice,
+                maxPrice,
+                search,
+                sort
+            }
+        });
     } catch (error) {
         console.error('Error fetching products:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
-}
+};
 
 export const getFeaturedProducts = async (_req, res) => {
     try {
@@ -47,49 +164,95 @@ export const getFeaturedProducts = async (_req, res) => {
         res.status(500).json({ message: 'Internal server error' });
     }
 }
+// Enhanced createProducts with better validation and security
 export const createProducts = async (req, res) => {
     try {
-        const { name, price, description, image, category } = req.body;
-        if (!name || !price || !description || !image || !category) {
-            return res.status(400).json({ message: 'All fields are required' });
+        // Check for validation errors
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                message: 'Validation error',
+                errors: errors.array()
+            });
+        }        const { name, price, description, image, category } = req.body;
+
+        // Convert price to number and validate
+        const priceNum = parseFloat(price);
+        if (isNaN(priceNum) || priceNum <= 0) {
+            return res.status(400).json({ message: 'Invalid price value' });
         }
-        let cloudinaryResponse;
-        if (image) {
-            try {
-                cloudinaryResponse = await cloudinary.uploader.upload(image, {
-                    folder: 'products',
-                    resource_type: 'image'
-                });
-            } catch (error) {
-                console.error('Cloudinary upload error:', error);
-                return res.status(500).json({ message: 'Image upload failed' });
-            }
-        } else {
-            return res.status(400).json({ message: 'Invalid image URL' });
-        }
-        const product = await Product.create({
-            name,
-            price,
-            description,
-            image: cloudinaryResponse?.secure_url ? cloudinaryResponse.secure_url : "",
-            category
+
+        // Check for duplicate product names
+        const existingProduct = await Product.findOne({ 
+            name: new RegExp(`^${name}$`, 'i') 
         });
+        
+        if (existingProduct) {
+            return res.status(409).json({ message: 'Product with this name already exists' });
+        }
+
+        let cloudinaryResponse;
+        try {
+            // Validate image format and size before upload
+            if (!image.startsWith('data:image/')) {
+                return res.status(400).json({ message: 'Invalid image format' });
+            }
+
+            cloudinaryResponse = await cloudinary.uploader.upload(image, {
+                folder: 'products',
+                resource_type: 'image',
+                quality: 'auto',
+                fetch_format: 'auto',
+                transformation: [
+                    { width: 800, height: 800, crop: 'limit' },
+                    { quality: 'auto' }
+                ]
+            });
+        } catch (error) {
+            console.error('Cloudinary upload error:', error);
+            return res.status(500).json({ message: 'Image upload failed' });
+        }        const product = await Product.create({
+            name: name.trim(),
+            price: priceNum,
+            description: description.trim(),
+            image: cloudinaryResponse.secure_url,
+            category: category.toLowerCase().trim()
+        });
+
+        // Clear relevant caches
+        await Promise.all([
+            updateFreaturedProductsCache(),
+            clearProductCaches()
+        ]);
 
         res.status(201).json(product);
     } catch (error) {
         console.error('Error creating product:', error.message);
         res.status(500).json({ message: 'Internal server error' });
     }
-}
+};
 
 
 
+// Enhanced deleteProducts with better security
 export const deleteProducts = async (req, res) => {
     try {
-        const { id } = req.params;
-        if (!id) {
-            return res.status(400).json({ message: 'Product ID is required' });
+        // Check for validation errors
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                message: 'Validation error',
+                errors: errors.array()
+            });
         }
+
+        const { id } = req.params;
+
+        // Validate MongoDB ObjectId
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).json({ message: 'Invalid product ID format' });
+        }
+
         const product = await Product.findById(id);
         if (!product) {
             return res.status(404).json({ message: 'Product not found' });
@@ -97,30 +260,32 @@ export const deleteProducts = async (req, res) => {
         
         // Delete image from Cloudinary if it exists
         if (product.image) {
-            const publicId = product.image.split('/').pop().split('.')[0];
             try {
-                await cloudinary.uploader.destroy(`products/${publicId}`, {
-                    resource_type: 'image'
-                });
+                // Extract public_id from Cloudinary URL
+                const publicId = product.image.split('/').slice(-2).join('/').split('.')[0];
+                await cloudinary.uploader.destroy(publicId);
                 console.log('Image deleted from Cloudinary');
             } catch (error) {
                 console.error('Error deleting image from Cloudinary:', error.message);
-                // Don't return here, continue to delete the product from database
+                // Continue with product deletion even if image deletion fails
             }
         }
         
         // Delete the product from database
         await Product.findByIdAndDelete(id);
         
-        // Update featured products cache if needed
-        await updateFreaturedProductsCache();
+        // Clear caches
+        await Promise.all([
+            updateFreaturedProductsCache(),
+            clearProductCaches()
+        ]);
         
         res.status(200).json({ message: 'Product deleted successfully' });
     } catch (error) {
         console.error('Error deleting product:', error.message);
         res.status(500).json({ message: 'Internal server error' });
     }
-}
+};
 
 export const getRecommendedProducts = async (_req, res) => {
     try {
@@ -155,12 +320,26 @@ export const getRecommendedProducts = async (_req, res) => {
         console.error('Error fetching recommended products:', error.message);
         res.status(500).json({ message: 'Internal server error' });
     }
-}
- 
+}// Enhanced getProductById with better validation
 export const getProductById = async (req, res) => {
     try {
+        // Check for validation errors
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                message: 'Validation error',
+                errors: errors.array()
+            });
+        }
+
         const { id } = req.params;
-        const product = await Product.findById(id);
+
+        // Validate MongoDB ObjectId
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).json({ message: 'Invalid product ID format' });
+        }
+
+        const product = await Product.findById(id).lean();
         
         if (!product) {
             return res.status(404).json({ message: 'Product not found' });
@@ -171,27 +350,56 @@ export const getProductById = async (req, res) => {
         console.error('Error fetching product:', error.message);
         res.status(500).json({ message: 'Internal server error' });
     }
-}
- 
+};
+
+// Enhanced getProductsByCategory with pagination
 export const getProductsByCategory = async (req, res) => {
     try {
         const { category } = req.params;
+        const page = parseInt(req.query.page) || 1;
+        const limit = Math.min(parseInt(req.query.limit) || 12, 100);
+        const skip = (page - 1) * limit;
+        const sort = req.query.sort || '-createdAt';
         
         if (!category) {
             return res.status(400).json({ message: 'Category is required' });
         }
         
-        // Decode URI component in case of URL encoding and normalize case
+        // Decode URI component and normalize
         const normalizedCategory = decodeURIComponent(category).toLowerCase().trim();
         
-        const products = await Product.find({ category: normalizedCategory });
+        // Build query
+        const filter = { category: new RegExp(`^${normalizedCategory}$`, 'i') };
         
-        res.status(200).json({ products });
+        // Execute queries in parallel
+        const [products, totalProducts] = await Promise.all([
+            Product.find(filter)
+                .sort(sort)
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            Product.countDocuments(filter)
+        ]);
+        
+        const totalPages = Math.ceil(totalProducts / limit);
+        
+        res.status(200).json({
+            products,
+            pagination: {
+                currentPage: page,
+                totalPages,
+                totalProducts,
+                limit,
+                hasNextPage: page < totalPages,
+                hasPrevPage: page > 1
+            },
+            category: normalizedCategory
+        });
     } catch (error) {
         console.error('Error fetching products by category:', error.message);
         res.status(500).json({ message: 'Internal server error' });
     }
-}
+};
 
 export const toggleFeaturedProducts = async (req, res) => {
     try {
@@ -236,27 +444,101 @@ export const updateFreaturedProductsCache = async () => {
     }
 }
 
+// Enhanced searchProducts with better validation and pagination
 export const searchProducts = async (req, res) => {
     try {
-        const { q } = req.query;
+        const { q, page = 1, limit = 12, sort = '-createdAt' } = req.query;
         
         if (!q || q.trim() === '') {
             return res.status(400).json({ message: 'Search query is required' });
         }
 
-        const searchRegex = new RegExp(q, 'i'); // Case-insensitive search
+        if (q.length < 2) {
+            return res.status(400).json({ message: 'Search query must be at least 2 characters' });
+        }
+
+        const pageNum = Math.max(1, parseInt(page));
+        const limitNum = Math.min(50, Math.max(1, parseInt(limit))); // Max 50 results per page
+        const skip = (pageNum - 1) * limitNum;
+
+        // Sanitize search query
+        const sanitizedQuery = q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const searchRegex = new RegExp(sanitizedQuery, 'i');
         
-        const products = await Product.find({
+        const filter = {
             $or: [
                 { name: searchRegex },
                 { description: searchRegex },
                 { category: searchRegex }
             ]
-        }).limit(20); // Limit results to 20
+        };
+
+        // Execute search with pagination
+        const [products, totalProducts] = await Promise.all([
+            Product.find(filter)
+                .sort(sort)
+                .skip(skip)
+                .limit(limitNum)
+                .lean(),
+            Product.countDocuments(filter)
+        ]);
+
+        const totalPages = Math.ceil(totalProducts / limitNum);
         
-        res.status(200).json(products);
+        res.status(200).json({
+            products,
+            pagination: {
+                currentPage: pageNum,
+                totalPages,
+                totalProducts,
+                limit: limitNum,
+                hasNextPage: pageNum < totalPages,
+                hasPrevPage: pageNum > 1
+            },
+            searchQuery: q,
+            sort
+        });
     } catch (error) {
         console.error('Error searching products:', error.message);
         res.status(500).json({ message: 'Internal server error' });
     }
-}
+};
+
+// Cache management utilities
+export const clearProductCaches = async () => {
+    try {
+        const isConnected = await ensureRedisConnection();
+        if (!isConnected) return;
+
+        const keys = await client.keys('products:*');
+        if (keys.length > 0) {
+            await client.del(keys);
+        }
+    } catch (error) {
+        console.error('Error clearing product caches:', error.message);
+    }
+};
+
+// Get product categories with count
+export const getProductCategories = async (req, res) => {
+    try {
+        const categories = await Product.aggregate([
+            {
+                $group: {
+                    _id: '$category',
+                    count: { $sum: 1 },
+                    minPrice: { $min: '$price' },
+                    maxPrice: { $max: '$price' }
+                }
+            },
+            {
+                $sort: { _id: 1 }
+            }
+        ]);
+
+        res.status(200).json(categories);
+    } catch (error) {
+        console.error('Error fetching categories:', error.message);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};

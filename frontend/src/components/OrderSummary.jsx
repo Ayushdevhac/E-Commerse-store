@@ -1,9 +1,12 @@
 import { motion } from "framer-motion";
+import { useState } from "react";
 import { useCartStore } from "../stores/useCartStore";
 import { Link } from "react-router-dom";
 import { MoveRight } from "lucide-react";
 import { loadStripe } from "@stripe/stripe-js";
 import axios from "../lib/axios";
+import AddressSelector from "./AddressSelector";
+import toast from "react-hot-toast";
 
 const stripePromise = loadStripe(
 	"pk_test_51RkPHmQ0UxMOS93KwIhHGGXkDWK5WGtDPDrAASL8gNJKHLWy15xPCofhetWe0MAfBrchiEHsSEfvIHhaxCU0J7v000umzV212g"
@@ -11,6 +14,8 @@ const stripePromise = loadStripe(
 
 const OrderSummary = () => {
 	const { total, subtotal, coupon, isCouponApplied, cart } = useCartStore();
+	const [selectedAddressId, setSelectedAddressId] = useState(null);
+	const [isProcessing, setIsProcessing] = useState(false);
 
 	const savings = subtotal - total;
 	const formattedSubtotal = subtotal.toFixed(2);
@@ -18,29 +23,58 @@ const OrderSummary = () => {
 	const formattedSavings = savings.toFixed(2);
 
 	const handlePayment = async () => {
-		const stripe = await stripePromise;
-		const res = await axios.post("/payments/create-checkout-session", {
-			products: cart,
-			couponCode: coupon ? coupon.code : null,
-		});
+		if (!selectedAddressId) {
+			toast.error('Please select a shipping address');
+			return;
+		}
 
-		const session = res.data;
-		const result = await stripe.redirectToCheckout({
-			sessionId: session.id,
-		});
+		setIsProcessing(true);
+		try {
+			const stripe = await stripePromise;
+			const res = await axios.post("/payments/create-checkout-session", {
+				products: cart,
+				couponCode: coupon ? coupon.code : null,
+				shippingAddressId: selectedAddressId,
+			});
 
-		if (result.error) {
-			console.error("Error:", result.error);
+			const session = res.data;
+			const result = await stripe.redirectToCheckout({
+				sessionId: session.id,
+			});
+
+			if (result.error) {
+				console.error("Error:", result.error);
+				toast.error("Payment failed. Please try again.");
+			}
+		} catch (error) {
+			console.error("Payment error:", error);
+			toast.error(error.response?.data?.message || "Payment failed. Please try again.");
+		} finally {
+			setIsProcessing(false);
 		}
 	};
-
 	return (
-		<motion.div
-			className='space-y-4 rounded-lg border border-gray-700 bg-gray-800 p-4 shadow-sm sm:p-6'
-			initial={{ opacity: 0, y: 20 }}
-			animate={{ opacity: 1, y: 0 }}
-			transition={{ duration: 0.5 }}
-		>
+		<div className="space-y-6">
+			{/* Address Selection */}
+			<motion.div
+				className='rounded-lg border border-gray-700 bg-gray-800 p-4 shadow-sm sm:p-6'
+				initial={{ opacity: 0, y: 20 }}
+				animate={{ opacity: 1, y: 0 }}
+				transition={{ duration: 0.5 }}
+			>
+				<AddressSelector
+					selectedAddressId={selectedAddressId}
+					onAddressSelect={setSelectedAddressId}
+				/>
+			</motion.div>
+
+			{/* Order Summary */}
+			<motion.div
+				className='space-y-4 rounded-lg border border-gray-700 bg-gray-800 p-4 shadow-sm sm:p-6'
+				initial={{ opacity: 0, y: 20 }}
+				animate={{ opacity: 1, y: 0 }}
+				transition={{ duration: 0.5, delay: 0.1 }}
+			>
 			<p className='text-xl font-semibold text-emerald-400'>Order summary</p>
 
 			<div className='space-y-4'>
@@ -67,15 +101,18 @@ const OrderSummary = () => {
 						<dt className='text-base font-bold text-white'>Total</dt>
 						<dd className='text-base font-bold text-emerald-400'>${formattedTotal}</dd>
 					</dl>
-				</div>
-
-				<motion.button
-					className='flex w-full items-center justify-center rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-300'
-					whileHover={{ scale: 1.05 }}
-					whileTap={{ scale: 0.95 }}
+				</div>				<motion.button
+					className={`flex w-full items-center justify-center rounded-lg px-5 py-2.5 text-sm font-medium text-white focus:outline-none focus:ring-4 focus:ring-emerald-300 transition-colors ${
+						selectedAddressId && !isProcessing
+							? 'bg-emerald-600 hover:bg-emerald-700'
+							: 'bg-gray-600 cursor-not-allowed'
+					}`}
+					whileHover={selectedAddressId && !isProcessing ? { scale: 1.05 } : {}}
+					whileTap={selectedAddressId && !isProcessing ? { scale: 0.95 } : {}}
 					onClick={handlePayment}
+					disabled={!selectedAddressId || isProcessing}
 				>
-					Proceed to Checkout
+					{isProcessing ? 'Processing...' : 'Proceed to Checkout'}
 				</motion.button>
 
 				<div className='flex items-center justify-center gap-2'>
@@ -89,7 +126,8 @@ const OrderSummary = () => {
 					</Link>
 				</div>
 			</div>
-		</motion.div>
+			</motion.div>
+		</div>
 	);
 };
 export default OrderSummary;

@@ -38,11 +38,16 @@ export const useUserStore = create((set, get) => ({
 			set({ loading: false });
 			showToast.error(error.response.data.message || "An error occurred");
 		}
-	},
-	logout: async () => {
+	},	logout: async () => {
 		try {
 			await axios.post("/auth/logout");
 			set({ user: null });
+			
+			// Clear other stores on logout
+			if (typeof window !== 'undefined') {
+				const { useAddressStore } = await import('./useAddressStore');
+				useAddressStore.getState().clearAddresses();
+			}
 		} catch (error) {
 			showToast.error(error.response?.data?.message || "An error occurred during logout");
 		}
@@ -58,7 +63,6 @@ export const useUserStore = create((set, get) => ({
 			set({ checkingAuth: false, user: null });
 		}
 	},
-
 	refreshToken: async () => {
 		// Prevent multiple simultaneous refresh attempts
 		if (get().checkingAuth) return;
@@ -71,6 +75,23 @@ export const useUserStore = create((set, get) => ({
 		} catch (error) {
 			set({ user: null, checkingAuth: false });
 			throw error;
+		}
+	},
+
+	updateProfile: async (profileData) => {
+		try {
+			const currentUser = get().user;
+			if (!currentUser) return;
+
+			// Update the user state immediately for better UX
+			set({ 
+				user: { 
+					...currentUser, 
+					...profileData 
+				} 
+			});
+		} catch (error) {
+			console.error("Error updating profile in store:", error);
 		}
 	},
 }));

@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { UserPlus, Mail, Lock, User, ArrowRight, Loader } from "lucide-react";
 import { motion } from "framer-motion";
 import { useUserStore } from "../stores/useUserStore";
+import PasswordStrengthMeter from "../components/PasswordStrengthMeter";
+import { fetchPasswordRequirements } from "../stores/useAdminStore";
 
 
 const SignUpPage = () => {
@@ -12,12 +14,51 @@ const SignUpPage = () => {
 		password: "",
 		confirmPassword: "",
 	});
-
+	const [passwordRequirements, setPasswordRequirements] = useState({ passwordMinLength: 8 });
 	const { signup, loading } = useUserStore();
+
+	// Fetch password requirements on component mount
+	useEffect(() => {
+		const loadPasswordRequirements = async () => {
+			try {
+				const requirements = await fetchPasswordRequirements();
+				setPasswordRequirements(requirements);
+			} catch (error) {
+				console.error("Failed to fetch password requirements:", error);
+				// Keep default requirements if fetch fails
+			}
+		};
+		loadPasswordRequirements();
+	}, []);
+
+	// Password strength validation
+	const getPasswordStrength = (password) => {
+		const criteria = [
+			password.length >= passwordRequirements.passwordMinLength,
+			/[A-Z]/.test(password),
+			/[a-z]/.test(password),
+			/\d/.test(password),
+			/[!@#$%^&*(),.?":{}|<>]/.test(password)
+		];
+		return criteria.filter(Boolean).length;
+	};
+	const isFormValid = () => {
+		return (
+			formData.name.trim() &&
+			formData.email.trim() &&
+			formData.password &&
+			formData.confirmPassword &&
+			formData.password === formData.confirmPassword &&
+			formData.password.length >= passwordRequirements.passwordMinLength &&
+			getPasswordStrength(formData.password) >= 3 // At least "Fair" strength
+		);
+	};
 
 	const handleSubmit = (e) => {
 		e.preventDefault();
-		signup(formData);
+		if (isFormValid()) {
+			signup(formData);
+		}
 	};
  return (
 		<div className='min-h-screen bg-gray-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8'>
@@ -80,9 +121,7 @@ const SignUpPage = () => {
 									placeholder='you@example.com'
 								/>
 							</div>
-						</div>
-
-						<div>
+						</div>						<div>
 							<label htmlFor='password' className='block text-sm font-medium text-gray-300'>
 								Password
 							</label>
@@ -100,10 +139,14 @@ const SignUpPage = () => {
 									rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm'
 									placeholder='••••••••'
 								/>
-							</div>
-						</div>
-
-						<div>
+							</div>							{/* Password Strength Meter */}
+							{formData.password && (
+								<PasswordStrengthMeter 
+									password={formData.password} 
+									minLength={passwordRequirements.passwordMinLength}
+								/>
+							)}
+						</div>						<div>
 							<label htmlFor='confirmPassword' className='block text-sm font-medium text-gray-300'>
 								Confirm Password
 							</label>
@@ -122,15 +165,29 @@ const SignUpPage = () => {
 									placeholder='••••••••'
 								/>
 							</div>
-						</div>
-
-						<button
+							{/* Password Match Indicator */}
+							{formData.confirmPassword && (
+								<div className={`mt-2 text-sm flex items-center ${
+									formData.password === formData.confirmPassword 
+										? 'text-green-400' 
+										: 'text-red-400'
+								}`}>
+									{formData.password === formData.confirmPassword ? '✓' : '✗'} 
+									<span className="ml-1">
+										{formData.password === formData.confirmPassword 
+											? 'Passwords match' 
+											: 'Passwords do not match'
+										}
+									</span>
+								</div>
+							)}
+						</div>						<button
 							type='submit'
 							className='w-full flex justify-center py-2 px-4 border border-transparent 
 							rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600
 							 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2
-							  focus:ring-emerald-500 transition duration-150 ease-in-out disabled:opacity-50'
-							disabled={loading}
+							  focus:ring-emerald-500 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed'
+							disabled={loading || !isFormValid()}
 						>
 							{loading ? (
 								<>

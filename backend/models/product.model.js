@@ -18,18 +18,37 @@ price:{
 image: {
     type: String,
     required: [true, "Product image is required"],
-}, category: {
+}, 
+category: {
     type: String,
     required: [true, "Product category is required"],
-    
 },
 isFeatured: {
     type: Boolean,
     default: false,
+},
+averageRating: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 5,
+},
+totalReviews: {
+    type: Number,
+    default: 0,
+    min: 0,
 }
+}, {timestamps: true});
 
-} ,{timestamps: true});
+// Index for better query performance
+productSchema.index({ category: 1 });
+productSchema.index({ averageRating: -1 });
+productSchema.index({ isFeatured: 1 });
 
+// Virtual for rounded rating
+productSchema.virtual('roundedRating').get(function() {
+    return Math.round(this.averageRating * 10) / 10;
+});
 
 const Product = mongoose.model("Product", productSchema);
 export default Product;

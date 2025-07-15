@@ -8,6 +8,7 @@ import { useUserStore } from "../stores/useUserStore";
 import { useWishlistStore } from "../stores/useWishlistStore";
 import PeopleAlsoBought from "../components/PeopleAlsoBought";
 import LoadingSpinner from "../components/LoadingSpinner";
+import ReviewList from "../components/ReviewList";
 import axios from "../lib/axios";
 import showToast from "../lib/toast";
 
@@ -20,17 +21,13 @@ const ProductDetailPage = () => {
 	const [loading, setLoading] = useState(true);
 	const [selectedImage, setSelectedImage] = useState(0);
 	const [quantity, setQuantity] = useState(1);
-	const [activeTab, setActiveTab] = useState("description");
-	const [reviews, setReviews] = useState([]);
-	const [reviewsLoading, setReviewsLoading] = useState(false);	useEffect(() => {
+	const [activeTab, setActiveTab] = useState("description");	useEffect(() => {
 		const fetchProduct = async () => {
 			try {
 				setLoading(true);
 				const response = await axios.get(`/products/${id}`);
 				setProduct(response.data);
-				
-				// Fetch reviews for this product
-				await fetchReviews(id);			} catch (error) {
+			} catch (error) {
 				console.error("Error fetching product:", error);
 				showToast.error("Failed to load product");
 				navigate("/");
@@ -43,18 +40,6 @@ const ProductDetailPage = () => {
 			fetchProduct();
 		}
 	}, [id, navigate]);
-
-	const fetchReviews = async (productId) => {
-		try {
-			setReviewsLoading(true);
-			const response = await axios.get(`/reviews/product/${productId}`);
-			setReviews(response.data);
-		} catch (error) {
-			console.error("Error fetching reviews:", error);
-		} finally {
-			setReviewsLoading(false);
-		}
-	};
 
 	useEffect(() => {
 		if (user) {
@@ -294,56 +279,21 @@ const ProductDetailPage = () => {
 									</div>
 								</div>
 							</div>
-						)}
-
-						{activeTab === "reviews" && (
+						)}						{activeTab === "reviews" && (
 							<div>
 								<div className="flex items-center justify-between mb-8">
 									<h3 className="text-2xl font-semibold text-white">Customer Reviews</h3>
-									<button className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors">
-										Write a Review
-									</button>
-								</div>								<div className="space-y-6">
-									{reviewsLoading ? (
-										<div className="text-center py-8">
-											<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-400 mx-auto"></div>
-											<p className="text-gray-400 mt-2">Loading reviews...</p>
-										</div>
-									) : reviews.length === 0 ? (
-										<div className="text-center py-8">
-											<p className="text-gray-400">No reviews yet. Be the first to review this product!</p>
-										</div>
-									) : (
-										reviews.map((review) => (
-											<div key={review._id} className="bg-gray-800 p-6 rounded-lg">
-												<div className="flex items-center justify-between mb-4">
-													<div className="flex items-center space-x-4">
-														<div className="w-10 h-10 bg-emerald-600 rounded-full flex items-center justify-center font-semibold">
-															{review.user.name.charAt(0).toUpperCase()}
-														</div>
-														<div>
-															<h4 className="font-medium text-white">{review.user.name}</h4>
-															<div className="flex items-center">
-																{[...Array(5)].map((_, i) => (
-																	<Star
-																		key={i}
-																		className={`w-4 h-4 ${
-																			i < review.rating ? "text-yellow-400 fill-current" : "text-gray-600"
-																		}`}
-																	/>
-																))}
-															</div>
-														</div>
-													</div>
-													<span className="text-sm text-gray-400">
-														{new Date(review.createdAt).toLocaleDateString()}
-													</span>
-												</div>
-												<p className="text-gray-300">{review.comment}</p>
-											</div>
-										))
+									{user && (
+										<button 
+											onClick={() => navigate("/reviews")}
+											className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors"
+										>
+											Write a Review
+										</button>
 									)}
 								</div>
+								
+								<ReviewList productId={product._id} />
 							</div>
 						)}
 

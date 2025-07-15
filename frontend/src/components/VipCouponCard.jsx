@@ -57,22 +57,41 @@ const VipCouponCard = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5 }}
-            >
-                <div className="flex items-center space-x-2 mb-2">
+            >                <div className="flex items-center space-x-2 mb-2">
                     <Crown className="text-purple-400" size={20} />
-                    <h3 className="text-lg font-medium text-purple-300">VIP Customer Program</h3>
+                    <h3 className="text-lg font-medium text-purple-300">Ultra-Exclusive VIP Program</h3>
                 </div>
                 <p className="text-gray-300 text-sm mb-2">
                     Total spent: <span className="text-emerald-400 font-medium">${vipData?.totalSpent?.toFixed(2) || '0.00'}</span>
                 </p>
-                <p className="text-gray-400 text-sm">
-                    {vipData?.message || 'Spend more than $300 to qualify for VIP coupons!'}
+                <p className="text-gray-300 text-sm mb-1">
+                    Orders: <span className="text-blue-400 font-medium">{vipData?.orderCount || 0}</span> | 
+                    Avg: <span className="text-yellow-400 font-medium">${vipData?.avgOrderValue?.toFixed(2) || '0.00'}</span>
                 </p>
+                <p className="text-gray-400 text-sm">
+                    {vipData?.eligibilityReason || 'Ultra-exclusive VIP program with strict criteria and limited availability!'}
+                </p>
+                
+                {vipData?.hasRecentVip && (
+                    <div className="mt-2 text-xs text-orange-300 bg-orange-900/20 rounded p-2">
+                        ⏰ VIP cooldown active - exclusive benefits limited to once every 3 months
+                    </div>
+                )}
+                
+                {vipData?.meetsBasicCriteria && !vipData?.isEligible && (
+                    <div className="mt-2 text-xs text-purple-300 bg-purple-900/20 rounded p-2">
+                        ✨ You meet VIP criteria! Our ultra-selective program has limited spots.
+                    </div>
+                )}
+                
                 <div className="mt-3 bg-purple-900/30 rounded-full h-2">
                     <div 
                         className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${Math.min((vipData?.totalSpent / 300) * 100, 100)}%` }}
+                        style={{ width: `${Math.min((vipData?.totalSpent / 2000) * 100, 100)}%` }}
                     ></div>
+                    <div className="text-xs text-purple-300 mt-1">
+                        Progress to Ultra Premium: ${((vipData?.totalSpent || 0) / 2000 * 100).toFixed(1)}%
+                    </div>
                 </div>
             </motion.div>
         );
@@ -84,10 +103,9 @@ const VipCouponCard = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-        >
-            <div className="flex items-center space-x-2 mb-3">
+        >            <div className="flex items-center space-x-2 mb-3">
                 <Crown className="text-yellow-400" size={24} />
-                <h3 className="text-xl font-bold text-yellow-300">VIP Customer</h3>
+                <h3 className="text-xl font-bold text-yellow-300">Ultra-Exclusive VIP</h3>
                 <Sparkles className="text-yellow-400" size={20} />
             </div>
 
@@ -96,7 +114,11 @@ const VipCouponCard = () => {
                     Total spent: <span className="text-emerald-400 font-medium">${vipData.totalSpent.toFixed(2)}</span>
                 </p>
                 <p className="text-gray-300 text-sm">
-                    Orders completed: <span className="text-emerald-400 font-medium">{vipData.orderCount}</span>
+                    Orders: <span className="text-blue-400 font-medium">{vipData.orderCount}</span> | 
+                    Avg: <span className="text-yellow-400 font-medium">${vipData.avgOrderValue?.toFixed(2) || '0.00'}</span>
+                </p>
+                <p className="text-yellow-300 text-sm font-medium">
+                    Tier: <span className="uppercase">{vipData.tier}</span>
                 </p>
             </div>
 
@@ -117,10 +139,12 @@ const VipCouponCard = () => {
                     </div>
                 </div>
             ) : (
-                <div className="space-y-3">
-                    <p className="text-yellow-300 text-sm font-medium">
-                        🎉 Congratulations! You qualify for a VIP coupon!
+                <div className="space-y-3">                    <p className="text-yellow-300 text-sm font-medium">
+                        🎉 You've been selected for our ultra-exclusive VIP program!
                     </p>
+                    <div className="text-xs text-yellow-200 bg-yellow-900/20 rounded p-2 mb-3">
+                        Only 70% of qualifying customers are chosen. You're among the elite!
+                    </div>
                     <motion.button
                         onClick={claimVipCoupon}
                         disabled={claiming}

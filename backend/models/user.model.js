@@ -28,11 +28,49 @@ const userSchema = new mongoose.Schema({
             ref: 'Product',
         }
     }
-  ] ,
-  wishlist: [
+  ] ,  wishlist: [
     {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Product',
+    }
+  ],
+  addresses: [
+    {
+      type: {
+        type: String,
+        enum: ['home', 'work', 'other'],
+        default: 'home'
+      },
+      street: {
+        type: String,
+        required: true,
+        trim: true
+      },
+      city: {
+        type: String,
+        required: true,
+        trim: true
+      },
+      state: {
+        type: String,
+        required: true,
+        trim: true
+      },
+      zipCode: {
+        type: String,
+        required: true,
+        trim: true
+      },
+      country: {
+        type: String,
+        required: true,
+        trim: true,
+        default: 'United States'
+      },
+      isDefault: {
+        type: Boolean,
+        default: false
+      }
     }
   ],
   role:{

@@ -1,8 +1,8 @@
-import  axios from 'axios';
+import axios from 'axios';
 const axiosInstance = axios.create({
-    baseURL:import.meta.mode==="development"?'http://localhost:5000/api':"/api",
+    baseURL: "/api", // Use the proxy in development, direct path in production
     withCredentials: true // This allows cookies to be sent with requests, useful for authentication
-});   
+});
   
   
 

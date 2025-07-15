@@ -7,44 +7,139 @@ export const useProductStore = create((set, get) => ({
 	loading: false,
 	error: null,
 	productType: null, // Track what type of products are loaded: 'all', 'featured', 'category'
+	pagination: {
+		currentPage: 1,
+		totalPages: 1,
+		totalProducts: 0,
+		limit: 12,
+		hasNextPage: false,
+		hasPrevPage: false
+	},
+	filters: {
+		category: null,
+		minPrice: 0,
+		maxPrice: null,
+		search: '',		sort: '-createdAt'
+	},
 
 	setProducts: (products) => set({ products }),
-	clearProducts: () => set({ products: [], error: null, productType: null }),
+	clearProducts: () => set({ 
+		products: [], 
+		error: null, 
+		productType: null,
+		pagination: {
+			currentPage: 1,
+			totalPages: 1,
+			totalProducts: 0,
+			limit: 12,
+			hasNextPage: false,
+			hasPrevPage: false
+		}
+	}),
+
+	setFilters: (newFilters) => set((state) => ({
+		filters: { ...state.filters, ...newFilters }
+	})),
+
+	setPagination: (pagination) => set({ pagination }),
+
 	createProduct: async (productData) => {
-		set({ loading: true });		try {
+		set({ loading: true });
+		try {
 			const res = await axios.post("/products", productData);
-        
 			set((state) => ({
 				products: [...(state?.products), res.data],
 				loading: false,
 			}));
 			showToast.success("Product created successfully");
 		} catch (error) {
-			const errorMessage = error?.response?.data?.error || "Failed to create product";
+			const errorMessage = error?.response?.data?.message || "Failed to create product";
 			showToast.error(errorMessage);
 			set({ loading: false });
 		}
-	},	fetchAllProducts: async () => {
+	},
+
+	// Enhanced fetchAllProducts with pagination and filtering
+	fetchAllProducts: async (page = 1, filters = {}) => {
 		set({ loading: true });
 		try {
-			const response = await axios.get("/products");
+			const params = new URLSearchParams({
+				page: page.toString(),
+				limit: get().pagination.limit.toString(),
+				...filters
+			});
+
+			const response = await axios.get(`/products?${params}`);
 			
-			set({ products: response.data, loading: false, productType: 'all' });
+			set({ 
+				products: response.data.products, 
+				loading: false, 
+				productType: 'all',
+				pagination: response.data.pagination,
+				filters: response.data.filters
+			});
 		} catch (error) {
 			set({ error: "Failed to fetch products", loading: false });
-			showToast.error(error.response.data.error || "Failed to fetch products");
+			showToast.error(error.response?.data?.message || "Failed to fetch products");
 		}
-	},	fetchProductsByCategory: async (category) => {
-		set({ loading: true, products: [], error: null }); // Clear previous products
+	},
+
+	// Enhanced fetchProductsByCategory with pagination
+	fetchProductsByCategory: async (category, page = 1, options = {}) => {
+		set({ loading: true, products: [], error: null });
 		try {
-			const response = await axios.get(`/products/category/${category}`);
-			set({ products: response.data.products, loading: false, productType: 'category' });
+			const params = new URLSearchParams({
+				page: page.toString(),
+				limit: options.limit || get().pagination.limit.toString(),
+				sort: options.sort || get().filters.sort
+			});
+
+			const response = await axios.get(`/products/category/${category}?${params}`);
+			
+			set({ 
+				products: response.data.products, 
+				loading: false, 
+				productType: 'category',
+				pagination: response.data.pagination,
+				filters: { ...get().filters, category: response.data.category }
+			});
 		} catch (error) {
 			console.error("Error fetching products by category:", error);
 			set({ error: "Failed to fetch products", loading: false });
-			showToast.error(error.response.data.error || "Failed to fetch products");
+			showToast.error(error.response?.data?.message || "Failed to fetch products");
 		}
 	},
+
+	// Enhanced search products with pagination
+	searchProducts: async (query, page = 1, options = {}) => {
+		if (!query.trim()) {
+			get().fetchAllProducts(page);
+			return;
+		}
+
+		set({ loading: true });
+		try {
+			const params = new URLSearchParams({
+				q: query,
+				page: page.toString(),
+				limit: options.limit || get().pagination.limit.toString(),
+				sort: options.sort || get().filters.sort
+			});
+
+			const response = await axios.get(`/products/search?${params}`);
+			
+			set({ 
+				products: response.data.products, 
+				loading: false, 
+				productType: 'search',
+				pagination: response.data.pagination,
+				filters: { ...get().filters, search: query }
+			});
+		} catch (error) {
+			set({ error: "Failed to search products", loading: false });
+			showToast.error(error.response?.data?.message || "Failed to search products");		}
+	},
+
 	deleteProduct: async (productId) => {
 		set({ loading: true });
 		try {
@@ -52,15 +147,19 @@ export const useProductStore = create((set, get) => ({
 			set((state) => ({
 				products: state.products.filter((product) => product._id !== productId),
 				loading: false,
-			}));		} catch (error) {
+			}));
+			showToast.success("Product deleted successfully");
+		} catch (error) {
 			set({ loading: false });
-			showToast.error(error.response.data.error || "Failed to delete product");
+			showToast.error(error.response?.data?.message || "Failed to delete product");
 		}
-	},	toggleFeaturedProduct: async (productId) => {
+	},
+
+	toggleFeaturedProduct: async (productId) => {
 		set({ loading: true });
 		try {
 			const response = await axios.patch(`/products/${productId}`);
-			// this will update the isFeatured prop of the product
+			
 			set((state) => ({
 				products: state.products.map((product) =>
 					product._id === productId ? { ...product, isFeatured: response.data.isFeatured } : product
@@ -68,14 +167,12 @@ export const useProductStore = create((set, get) => ({
 				loading: false,
 			}));
 			
-			// Show appropriate message
 			const statusText = response.data.isFeatured ? "featured" : "removed from featured";
 			showToast.success(`Product ${statusText} successfully`);
 			
-			// If we're currently showing featured products, refresh them
+			// Refresh featured products if currently showing them
 			const currentState = get();
 			if (currentState.productType === 'featured') {
-				// Delay slightly to ensure backend cache is updated
 				setTimeout(() => {
 					get().fetchFeaturedProducts();
 				}, 200);
@@ -83,21 +180,35 @@ export const useProductStore = create((set, get) => ({
 			
 		} catch (error) {
 			set({ loading: false });
-			showToast.error(error.response.data.error || "Failed to update product");
+			showToast.error(error.response?.data?.message || "Failed to update product");
 		}
-	},fetchFeaturedProducts: async () => {
+	},
+
+	fetchFeaturedProducts: async () => {
 		set({ loading: true });
 		try {
 			const response = await axios.get("/products/featured");
-			set({ products: response.data, loading: false, productType: 'featured' });
-		} catch (error) {
-			// If 404, it means no featured products exist - clear the products array
+			set({ 
+				products: response.data, 
+				loading: false, 
+				productType: 'featured',
+				// Reset pagination for featured products since they're not paginated
+				pagination: {
+					currentPage: 1,
+					totalPages: 1,
+					totalProducts: response.data.length,
+					limit: response.data.length,
+					hasNextPage: false,
+					hasPrevPage: false
+				}
+			});		} catch (error) {
 			if (error.response?.status === 404) {
+				// No featured products found - this is normal, not an error
 				set({ products: [], loading: false, error: null, productType: 'featured' });
-				console.log("No featured products found - clearing products list");
+				console.info("No featured products available at this time");
 			} else {
-				set({ error: "Failed to fetch products", loading: false });
-				console.log("Error fetching featured products:", error);
+				set({ error: "Failed to fetch featured products", loading: false });
+				console.error("Error fetching featured products:", error);
 			}
 		}
 	},

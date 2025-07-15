@@ -7,8 +7,16 @@ import AdminPage from "./pages/AdminPage";
 import CategoryPage from "./pages/CategoryPage";
 import ProductDetailPage from "./pages/ProductDetailPage";
 import WishlistPage from "./pages/WishlistPage";
+import OrderHistoryPage from "./pages/OrderHistoryPage";
+import UserProfilePage from "./pages/UserProfilePage";
+import OrderDetailPage from "./pages/OrderDetailPage";
+import AddressTestPage from "./pages/AddressTestPage";
+import ReviewsPage from "./pages/ReviewsPage";
 
 import Navbar from "./components/Navbar";
+import NetworkStatus from "./components/NetworkStatus";
+import FeedbackWidget from "./components/FeedbackWidget";
+import PerformanceMonitor from "./components/PerformanceMonitor";
 import { Toaster } from "react-hot-toast";
 import { useUserStore } from "./stores/useUserStore";
 import { useEffect } from "react";
@@ -37,7 +45,13 @@ function App() {
 	if (checkingAuth) return <LoadingSpinner />;
 
 	return (
-		<div className='min-h-screen bg-gray-900 text-white relative'>
+		<div className='min-h-screen bg-gray-900 text-white relative overflow-x-hidden'>
+			{/* Network Status Component */}
+			<NetworkStatus />
+			
+			{/* Performance Monitor */}
+			<PerformanceMonitor />
+			
 			{/* Background gradient - fixed to cover full page */}
 			<div className='fixed inset-0 w-full h-full overflow-hidden pointer-events-none z-0'>
 				<div className='absolute inset-0 bg-gray-900'>
@@ -47,7 +61,7 @@ function App() {
 
 			<div className='relative z-10'>
 				<Navbar />
-				<div className='pt-20'>
+				<div className='pt-16 sm:pt-20'>
 					<Routes>
 					<Route path='/' element={<HomePage />} />
 					<Route path='/signup' element={!user ? <SignUpPage /> : <Navigate to='/' />} />
@@ -59,16 +73,35 @@ function App() {
 					<Route path='/category/:category' element={<CategoryPage />} />
 					<Route path='/product/:id' element={<ProductDetailPage />} />
 					<Route path='/wishlist' element={user ? <WishlistPage /> : <Navigate to='/login' />} />
+					<Route path='/reviews' element={user ? <ReviewsPage /> : <Navigate to='/login' />} />
+					<Route path='/order-history' element={user ? <OrderHistoryPage /> : <Navigate to='/login' />} />
+					<Route path='/order/:id' element={user ? <OrderDetailPage /> : <Navigate to='/login' />} />
+					<Route path='/profile' element={user ? <UserProfilePage /> : <Navigate to='/login' />} />
 					<Route path='/cart' element={user ? <CartPage /> : <Navigate to='/login' />} />
 					<Route
 						path='/purchase-success'
 						element={user ? <PurchaseSuccessPage /> : <Navigate to='/login' />}
 					/>
 					<Route path='/purchase-cancel' element={user ? <PurchaseCancelPage /> : <Navigate to='/login' />} />
+					<Route path='/address-test' element={<AddressTestPage />} />
 				</Routes>
 				</div>
 			</div>
-			<Toaster />
+			
+			{/* Feedback Widget - only show for logged in users */}
+			{user && <FeedbackWidget />}
+			
+			<Toaster
+				position="top-right"
+				toastOptions={{
+					className: 'text-sm',
+					duration: 4000,
+					style: {
+						background: '#374151',
+						color: '#fff',
+					},
+				}}
+			/>
 		</div>
 	);
 }

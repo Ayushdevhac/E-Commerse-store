@@ -8,7 +8,26 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:5000',
+        changeOrigin: true,
+        secure: false,
       }
     }
   },
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          router: ['react-router-dom'],
+          ui: ['framer-motion', 'lucide-react']
+        }
+      }
+    }
+  },
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production')
+  }
 })

@@ -1,37 +1,30 @@
 import { useEffect } from "react";
 import CategoryItem from "../components/CategoryItem";
 import { useProductStore } from "../stores/useProductStore";
+import useCategoryStore from "../stores/useCategoryStore";
 import FeaturedProducts from "../components/FeaturedProducts";
 // import TestPaymentComponent from "../components/TestPaymentComponent"; // Temporarily commented
 import { motion } from "framer-motion";
 import { ShoppingBag, Truck, Shield, RefreshCw } from "lucide-react";
 
-const categories = [
-	{ href: "jeans", name: "Jeans", imageUrl: "/jeans.jpg" },
-	{ href: "t-shirts", name: "T-shirts", imageUrl: "/tshirts.jpg" },
-	{ href: "shoes", name: "Shoes", imageUrl: "/shoes.jpg" },
-	{ href: "glasses", name: "Glasses", imageUrl: "/glasses.png" },
-	{ href: "jackets", name: "Jackets", imageUrl: "/jackets.jpg" },
-	{ href: "suits", name: "Suits", imageUrl: "/suits.jpg" },
-	{ href: "bags", name: "Bags", imageUrl: "/bags.jpg" },
-];
-
 const HomePage = () => {
 	const { fetchFeaturedProducts, products, isLoading } = useProductStore();
-
-	useEffect(() => {
+	const { activeCategories, fetchActiveCategories } = useCategoryStore();	useEffect(() => {
 		fetchFeaturedProducts();
-	}, [fetchFeaturedProducts]);
-	
-	// Refresh featured products when user returns to the page
+		fetchActiveCategories();
+	}, [fetchFeaturedProducts, fetchActiveCategories]);
+		// Refresh featured products when user returns to the page
 	useEffect(() => {
 		const handleFocus = () => {
 			fetchFeaturedProducts();
+			fetchActiveCategories();
 		};
 		
 		window.addEventListener('focus', handleFocus);
 		return () => window.removeEventListener('focus', handleFocus);
-	}, [fetchFeaturedProducts]);return (
+	}, [fetchFeaturedProducts, fetchActiveCategories]);
+
+	return (
 		<div className='relative min-h-screen text-white pb-16'>
 			{/* Enhanced background with animated elements */}
 			<div className='absolute inset-0 pointer-events-none min-h-full'>
@@ -118,10 +111,9 @@ const HomePage = () => {
 							</motion.div>
 						))}
 					</motion.div>
-				</motion.div>
-
-				{/* Categories Section */}
+				</motion.div>				{/* Categories Section */}
 				<motion.div
+					id="categories"
 					initial={{ opacity: 0, y: 30 }}
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ duration: 0.8, delay: 0.4 }}
@@ -133,17 +125,19 @@ const HomePage = () => {
 					</h2>
 					<p className='text-center text-xl text-gray-300 mb-12'>
 						Find exactly what you're looking for
-					</p>
-
-					<div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-16'>
-						{categories.map((category, index) => (
+					</p>					<div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-16'>
+						{activeCategories.map((category, index) => (
 							<motion.div
-								key={category.name}
+								key={category._id}
 								initial={{ opacity: 0, y: 20 }}
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ duration: 0.5, delay: 0.6 + index * 0.1 }}
 							>
-								<CategoryItem category={category} />
+								<CategoryItem category={{
+									href: category.slug,
+									name: category.name,
+									imageUrl: category.image
+								}} />
 							</motion.div>
 						))}
 					</div>
@@ -155,6 +149,32 @@ const HomePage = () => {
 						transition={{ duration: 0.8, delay: 0.8 }}
 					>
 						<FeaturedProducts featuredProducts={products} />
+					</motion.div>
+				)}
+
+				{/* No Featured Products Fallback */}
+				{!isLoading && products.length === 0 && (
+					<motion.div
+						initial={{ opacity: 0, y: 30 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ duration: 0.8, delay: 0.8 }}
+						className="text-center py-12"
+					>
+						<div className="max-w-md mx-auto">
+							<div className="text-6xl mb-4">🌟</div>
+							<h3 className="text-xl font-semibold text-white mb-2">
+								No Featured Products Yet
+							</h3>
+							<p className="text-gray-400 mb-6">
+								Our team is curating amazing products for you. Check back soon or explore our categories!
+							</p>
+							<button
+								onClick={() => window.location.href = '#categories'}
+								className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-lg transition-colors"
+							>
+								Browse Categories
+							</button>
+						</div>
 					</motion.div>
 				)}
 

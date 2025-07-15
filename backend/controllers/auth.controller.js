@@ -37,11 +37,12 @@ const setcookies = (res, accessToken, refreshToken) => {
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 }
-export const singup = async (req, res) => {
+export const signup = async (req, res) => {
     if (!req.body) {
         return res.status(400).json({ message: 'Request body is missing' });
     }
     const { email, password, name } = req.body;
+    
     try {
         const userExits = await User.findOne({ email });
         if (userExits) {
@@ -62,7 +63,12 @@ export const singup = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error(error);
+        console.error('Signup error:', error);
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
+        if (error.errors) {
+            console.error('Validation errors:', error.errors);
+        }
         res.status(500).json({ message: error.message });
     }
 };

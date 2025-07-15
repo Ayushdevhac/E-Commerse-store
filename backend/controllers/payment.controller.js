@@ -1,14 +1,18 @@
 import Coupon from '../models/coupon.model.js';
-import {stripe} from '../lib/stripe.js'
-import Order from '../models/order.model.js';  
-import dotenv from "dotenv";
-dotenv.config();
+import { initStripe } from '../lib/stripe.js'
+import Order from '../models/order.model.js';
+import User from '../models/user.model.js';
 
 export const createCheckoutSession = async (req, res) => {
 try {
-    const {products, couponCode} = req.body;
+    const stripe = initStripe();
+    const {products, couponCode, shippingAddressId} = req.body;
     if(!products || !Array.isArray(products) || products.length === 0) {
         return res.status(400).json({ message: 'Products are required' });
+    }
+
+    if (!shippingAddressId) {
+        return res.status(400).json({ message: 'Shipping address is required' });
     }
 
     let totalAmount = 0;
@@ -47,15 +51,14 @@ try {
         line_items: lineItems,
         mode: "payment",
         success_url: `${process.env.CLIENT_URL}/purchase-success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.CLIENT_URL}/purchase-cancel`,
-        discounts: coupon
+        cancel_url: `${process.env.CLIENT_URL}/purchase-cancel`,        discounts: coupon
             ? [{
-                coupon: await createStripeCoupon(coupon.discountPercentage)
+                coupon: await createStripeCoupon(stripe, coupon.discountPercentage)
             }]
-            : [],
-        metadata: {
+            : [],metadata: {
             userId: req.user._id.toString(),
             couponCode: couponCode || "",
+            shippingAddressId: shippingAddressId,
             products: JSON.stringify(
                 products.map((p) => ({
                     id: p._id,
@@ -63,7 +66,7 @@ try {
                     price: p.price,
                 }))
             )
-        },    });
+        },});
     
     if (totalAmount >= 20000) {
         await createNewCoupon(req.user._id);
@@ -78,6 +81,7 @@ try {
 
 export const checkoutSucess = async (req, res) => {
     try {
+        const stripe = initStripe();
         const { sessionId } = req.body;
         if (!sessionId) {
             return res.status(400).json({ message: 'Session ID is required' });
@@ -87,6 +91,17 @@ export const checkoutSucess = async (req, res) => {
         if (!session) {
             return res.status(404).json({ message: 'Session not found' });
         }        if (session.payment_status === 'paid') {
+            // Get the user and shipping address
+            const user = await User.findById(session.metadata.userId);
+            if (!user) {
+                return res.status(404).json({ message: 'User not found' });
+            }
+
+            const shippingAddress = user.addresses.id(session.metadata.shippingAddressId);
+            if (!shippingAddress) {
+                return res.status(404).json({ message: 'Shipping address not found' });
+            }
+
             // Deactivate coupon if used (user-specific)
             if (session.metadata.couponCode) {
                 await Coupon.findOneAndUpdate(
@@ -94,8 +109,7 @@ export const checkoutSucess = async (req, res) => {
                     { isActive: false }
                 );
             }
-            
-            // Create a new order
+              // Create a new order with proper status for successful payment
             const products = JSON.parse(session.metadata.products);
             const newOrder = new Order({
                 user: session.metadata.userId,
@@ -105,7 +119,17 @@ export const checkoutSucess = async (req, res) => {
                     price: p.price,
                 })),
                 totalAmount: session.amount_total / 100, // Convert cents to dollars
+                shippingAddress: {
+                    type: shippingAddress.type,
+                    street: shippingAddress.street,
+                    city: shippingAddress.city,
+                    state: shippingAddress.state,
+                    zipCode: shippingAddress.zipCode,
+                    country: shippingAddress.country
+                },
                 stripeSessionId: session.id,
+                status: 'processing', // Set status to processing since payment is successful
+                paymentStatus: 'completed' // Mark payment as completed
             });
             
             await newOrder.save();
@@ -125,7 +149,7 @@ export const checkoutSucess = async (req, res) => {
     }
 }
 
-async function createStripeCoupon(discountPercentage) {
+async function createStripeCoupon(stripe, discountPercentage) {
     try {
         const coupon = await stripe.coupons.create({
             percent_off: discountPercentage,

@@ -12,37 +12,58 @@ function generateCouponCode(prefix = 'VIP') {
     return result;
 }
 
-// Helper function to determine customer tier
+// Helper function to determine customer tier (ultra exclusive)
 function getCustomerTier(customer) {
-    if (customer.totalSpent >= 1000 || (customer.orderCount >= 5 && customer.avgOrderValue >= 200)) {
+    if (customer.totalSpent >= 2000 || (customer.orderCount >= 8 && customer.avgOrderValue >= 300)) {
         return 'platinum';
-    } else if (customer.totalSpent >= 500 || (customer.orderCount >= 3 && customer.avgOrderValue >= 150)) {
+    } else if (customer.totalSpent >= 1200 || (customer.orderCount >= 6 && customer.avgOrderValue >= 250)) {
         return 'gold';
-    } else {
+    } else if (customer.totalSpent >= 800 || (customer.orderCount >= 4 && customer.avgOrderValue >= 200)) {
         return 'silver';
+    } else {
+        return 'bronze';
     }
 }
 
-// Helper function to get VIP benefits based on tier
+// Helper function to check if user had recent VIP coupon (cooldown period)
+async function hasRecentVipCoupon(userId, monthsBack = 3) {
+    const cutoffDate = new Date();
+    cutoffDate.setMonth(cutoffDate.getMonth() - monthsBack);
+    
+    const recentVipCoupon = await Coupon.findOne({
+        userId: userId,
+        code: { $regex: /^VIP/ },
+        createdAt: { $gte: cutoffDate }
+    });
+    
+    return !!recentVipCoupon;
+}
+
+// Selective random eligibility (only 70% of qualifiers get VIP)
+function passesRandomSelection() {
+    return Math.random() < 0.7; // 70% chance
+}
+
+// Helper function to get VIP benefits based on tier (ultra exclusive)
 function getVipBenefits(tier, totalSpent) {
     switch (tier) {
         case 'platinum':
-            return { discountPercentage: 25, minimumAmount: 100 };
+            return { discountPercentage: 35, minimumAmount: 100 };  // Ultra premium benefits
         case 'gold':
-            return { discountPercentage: 20, minimumAmount: 150 };
+            return { discountPercentage: 30, minimumAmount: 150 }; // Premium benefits
         case 'silver':
-            return { discountPercentage: 15, minimumAmount: 200 };
+            return { discountPercentage: 25, minimumAmount: 200 }; // Excellent benefits
+        case 'bronze':
+            return { discountPercentage: 20, minimumAmount: 250 }; // Good VIP benefits
         default:
-            return { discountPercentage: 10, minimumAmount: 250 };
+            return null; // No VIP benefits for non-qualifying customers
     }
 }
 
 // Create VIP coupons for high-value customers with stricter criteria
 export const createVipCoupons = async (req, res) => {
     try {
-        console.log('🎯 Creating VIP coupons for qualifying customers...');
-
-        // More sophisticated criteria for VIP eligibility
+        console.log('🎯 Creating VIP coupons for qualifying customers...');        // Ultra exclusive criteria for VIP eligibility (much stricter)
         const pipeline = [
             {
                 $group: {
@@ -57,20 +78,28 @@ export const createVipCoupons = async (req, res) => {
             {
                 $match: {
                     $or: [
-                        // Tier 1: High spenders (spend $500+ regardless of order count)
-                        { totalSpent: { $gte: 500 } },
-                        // Tier 2: Loyal customers (3+ orders AND $300+ total)
+                        // Tier 1: Ultra Premium customers (spend $2000+ OR $1500+ with 6+ orders)
+                        { totalSpent: { $gte: 2000 } },
                         { 
                             $and: [
-                                { orderCount: { $gte: 3 } },
-                                { totalSpent: { $gte: 300 } }
+                                { totalSpent: { $gte: 1500 } },
+                                { orderCount: { $gte: 6 } }
                             ]
                         },
-                        // Tier 3: High-value single orders ($250+ average order value AND 2+ orders)
+                        // Tier 2: Premium loyal customers (8+ orders AND $1200+ total AND $200+ average)
+                        { 
+                            $and: [
+                                { orderCount: { $gte: 8 } },
+                                { totalSpent: { $gte: 1200 } },
+                                { avgOrderValue: { $gte: 200 } }
+                            ]
+                        },
+                        // Tier 3: High-value exclusive customers ($500+ average order value AND 4+ orders)
                         {
                             $and: [
-                                { avgOrderValue: { $gte: 250 } },
-                                { orderCount: { $gte: 2 } }
+                                { avgOrderValue: { $gte: 500 } },
+                                { orderCount: { $gte: 4 } },
+                                { totalSpent: { $gte: 1000 } }
                             ]
                         }
                     ]
@@ -79,10 +108,13 @@ export const createVipCoupons = async (req, res) => {
             {
                 $sort: { totalSpent: -1 }
             }
-        ];
-
-        const qualifyingCustomers = await Order.aggregate(pipeline);
+        ];        const qualifyingCustomers = await Order.aggregate(pipeline);
         const results = [];
+        let vipCouponsCreated = 0;
+        let eligibleButNotSelected = 0;
+        let cooldownBlocked = 0;
+
+        console.log(`🎯 Found ${qualifyingCustomers.length} customers meeting basic VIP criteria`);
 
         for (const customer of qualifyingCustomers) {
             const user = await User.findById(customer._id);
@@ -95,6 +127,9 @@ export const createVipCoupons = async (req, res) => {
                 isActive: true
             });
 
+            // Check for recent VIP coupon (cooldown period)
+            const hasRecentVip = await hasRecentVipCoupon(user._id, 3);
+
             if (existingVipCoupon) {
                 results.push({
                     user: user.email,
@@ -105,22 +140,47 @@ export const createVipCoupons = async (req, res) => {
                     couponCode: existingVipCoupon.code,
                     tier: getCustomerTier(customer)
                 });
+            } else if (hasRecentVip) {
+                cooldownBlocked++;
+                results.push({
+                    user: user.email,
+                    totalSpent: customer.totalSpent,
+                    orderCount: customer.orderCount,
+                    avgOrderValue: customer.avgOrderValue,
+                    status: 'cooldown_period',
+                    reason: 'Had VIP coupon within last 3 months',
+                    tier: getCustomerTier(customer)
+                });
+            } else if (!passesRandomSelection()) {
+                // Ultra selective: only 70% of qualifying customers get VIP
+                eligibleButNotSelected++;
+                results.push({
+                    user: user.email,
+                    totalSpent: customer.totalSpent,
+                    orderCount: customer.orderCount,
+                    avgOrderValue: customer.avgOrderValue,
+                    status: 'eligible_not_selected',
+                    reason: 'VIP program is highly selective',
+                    tier: getCustomerTier(customer)
+                });
             } else {
-                // Determine VIP tier and benefits
+                // Create VIP coupon for selected customer
                 const tier = getCustomerTier(customer);
-                const { discountPercentage, minimumAmount } = getVipBenefits(tier, customer.totalSpent);
+                const vipBenefits = getVipBenefits(tier, customer.totalSpent);
+                
+                if (!vipBenefits) continue;
 
                 const couponCode = generateCouponCode('VIP');
                 const expirationDate = new Date();
                 
                 // VIP coupons have longer validity based on tier
-                const validityDays = tier === 'platinum' ? 120 : tier === 'gold' ? 90 : 60;
+                const validityDays = tier === 'platinum' ? 180 : tier === 'gold' ? 120 : 90;
                 expirationDate.setDate(expirationDate.getDate() + validityDays);
 
                 const newCoupon = await Coupon.create({
                     code: couponCode,
-                    discountPercentage: discountPercentage,
-                    minimumAmount: minimumAmount,
+                    discountPercentage: vipBenefits.discountPercentage,
+                    minimumAmount: vipBenefits.minimumAmount,
                     expirationDate: expirationDate,
                     isActive: true,
                     userId: user._id,
@@ -128,6 +188,7 @@ export const createVipCoupons = async (req, res) => {
                     updatedAt: new Date()
                 });
 
+                vipCouponsCreated++;
                 results.push({
                     user: user.email,
                     totalSpent: customer.totalSpent,
@@ -135,8 +196,8 @@ export const createVipCoupons = async (req, res) => {
                     avgOrderValue: customer.avgOrderValue,
                     status: 'coupon_created',
                     couponCode: newCoupon.code,
-                    discountPercentage: discountPercentage,
-                    minimumAmount: minimumAmount,
+                    discountPercentage: vipBenefits.discountPercentage,
+                    minimumAmount: vipBenefits.minimumAmount,
                     expirationDate: expirationDate,
                     tier: tier,
                     validityDays: validityDays
@@ -144,9 +205,15 @@ export const createVipCoupons = async (req, res) => {
             }
         }
 
+        console.log(`✨ VIP Summary: ${vipCouponsCreated} created, ${eligibleButNotSelected} not selected, ${cooldownBlocked} in cooldown`);
+
         res.status(200).json({
-            message: 'VIP coupon generation completed',
+            message: 'Ultra-selective VIP coupon generation completed',
             customersProcessed: qualifyingCustomers.length,
+            vipCouponsCreated: vipCouponsCreated,
+            eligibleButNotSelected: eligibleButNotSelected,
+            cooldownBlocked: cooldownBlocked,
+            selectivityRate: `${((vipCouponsCreated / Math.max(qualifyingCustomers.length, 1)) * 100).toFixed(1)}%`,
             results: results
         });
 
@@ -184,14 +251,25 @@ export const checkVipEligibility = async (req, res) => {
             avgOrderValue: 0,
             firstOrderDate: null,
             lastOrderDate: null
-        };
-
-        // Check if user qualifies using the new criteria
-        const qualifiesHighSpender = userSpending.totalSpent >= 500;
-        const qualifiesLoyal = userSpending.orderCount >= 3 && userSpending.totalSpent >= 300;
-        const qualifiesHighValue = userSpending.avgOrderValue >= 250 && userSpending.orderCount >= 2;
+        };        // Check if user qualifies using the new ultra-strict criteria
+        const qualifiesPremium = userSpending.totalSpent >= 2000 || 
+            (userSpending.totalSpent >= 1500 && userSpending.orderCount >= 6);
         
-        const isEligible = qualifiesHighSpender || qualifiesLoyal || qualifiesHighValue;
+        const qualifiesLoyal = userSpending.orderCount >= 8 && 
+            userSpending.totalSpent >= 1200 && 
+            userSpending.avgOrderValue >= 200;
+        
+        const qualifiesHighValue = userSpending.avgOrderValue >= 500 && 
+            userSpending.orderCount >= 4 && 
+            userSpending.totalSpent >= 1000;
+        
+        const meetsBasicCriteria = qualifiesPremium || qualifiesLoyal || qualifiesHighValue;
+
+        // Check for recent VIP coupon (cooldown)
+        const hasRecentVip = await hasRecentVipCoupon(userId, 3);
+
+        // Final eligibility includes random selection factor
+        const isEligible = meetsBasicCriteria && !hasRecentVip && passesRandomSelection();
 
         // Check if user already has VIP coupon
         const existingVipCoupon = await Coupon.findOne({
@@ -200,42 +278,53 @@ export const checkVipEligibility = async (req, res) => {
             isActive: true
         });
 
-        // Determine user's tier if eligible
+        // Determine user's tier if they meet basic criteria
         let tier = null;
         let eligibilityReason = '';
         
-        if (isEligible) {
-            tier = getCustomerTier(userSpending);
-            if (qualifiesHighSpender) {
-                eligibilityReason = 'High spender ($500+)';
-            } else if (qualifiesLoyal) {
-                eligibilityReason = 'Loyal customer (3+ orders, $300+)';
-            } else if (qualifiesHighValue) {
-                eligibilityReason = 'High-value orders ($250+ avg, 2+ orders)';
-            }
-        } else {
-            // Provide guidance on how to qualify
-            if (userSpending.totalSpent < 300) {
-                eligibilityReason = `Spend $${(300 - userSpending.totalSpent).toFixed(2)} more to start qualifying`;
-            } else if (userSpending.orderCount < 2) {
-                eligibilityReason = 'Place at least 2 orders to qualify';
+        if (existingVipCoupon) {
+            eligibilityReason = 'You already have an active VIP coupon';
+        } else if (hasRecentVip) {
+            eligibilityReason = 'VIP coupons are limited to once every 3 months';
+        } else if (!meetsBasicCriteria) {
+            // Provide specific guidance on how to qualify
+            if (userSpending.totalSpent < 1000) {
+                eligibilityReason = `Spend $${(1000 - userSpending.totalSpent).toFixed(2)} more to qualify for VIP consideration`;
+            } else if (userSpending.orderCount < 4) {
+                eligibilityReason = `Place ${4 - userSpending.orderCount} more orders to qualify for VIP status`;
+            } else if (userSpending.avgOrderValue < 200) {
+                eligibilityReason = `Increase average order value to $200+ (current: $${userSpending.avgOrderValue.toFixed(2)}) for VIP eligibility`;
             } else {
-                eligibilityReason = 'Continue shopping to unlock VIP benefits';
+                eligibilityReason = 'Continue building your exclusive purchase history to unlock VIP benefits';
+            }
+        } else if (meetsBasicCriteria && !isEligible) {
+            eligibilityReason = 'You meet VIP criteria! Our exclusive program has limited spots - keep shopping for future consideration';
+        } else {
+            tier = getCustomerTier(userSpending);
+            if (qualifiesPremium) {
+                eligibilityReason = 'Ultra Premium customer ($2000+ total OR $1500+ with 6+ orders)';
+            } else if (qualifiesLoyal) {
+                eligibilityReason = 'Loyal VIP customer (8+ orders, $1200+ total, $200+ avg)';            } else if (qualifiesHighValue) {
+                eligibilityReason = 'High-value exclusive customer ($500+ avg, 4+ orders, $1000+ total)';
             }
         }
 
         res.status(200).json({
             isEligible: isEligible,
+            meetsBasicCriteria: meetsBasicCriteria,
             totalSpent: userSpending.totalSpent,
             orderCount: userSpending.orderCount,
             avgOrderValue: userSpending.avgOrderValue,
             hasVipCoupon: !!existingVipCoupon,
+            hasRecentVip: hasRecentVip,
             tier: tier,
             eligibilityReason: eligibilityReason,
             qualificationCriteria: {
-                highSpender: qualifiesHighSpender,
-                loyalCustomer: qualifiesLoyal,
-                highValueOrders: qualifiesHighValue
+                ultraPremium: 'Spend $2000+ OR $1500+ with 6+ orders',
+                loyalVip: '8+ orders, $1200+ total, $200+ average',
+                highValue: '$500+ average order, 4+ orders, $1000+ total',
+                exclusivity: 'VIP status is highly selective and limited',
+                cooldown: '3-month minimum between VIP coupons'
             },
             vipCoupon: existingVipCoupon ? {
                 code: existingVipCoupon.code,
@@ -272,30 +361,52 @@ export const createMyVipCoupon = async (req, res) => {
                     avgOrderValue: { $avg: '$totalAmount' }
                 }
             }
-        ]);
+        ]);        const userSpending = spendingData[0];
 
-        const userSpending = spendingData[0];
+        // Check if user qualifies using the new ultra-strict criteria
+        const qualifiesPremium = userSpending?.totalSpent >= 2000 || 
+            (userSpending?.totalSpent >= 1500 && userSpending?.orderCount >= 6);
         
-        // Check if user qualifies using the new criteria
-        const qualifiesHighSpender = userSpending?.totalSpent >= 500;
-        const qualifiesLoyal = userSpending?.orderCount >= 3 && userSpending?.totalSpent >= 300;
-        const qualifiesHighValue = userSpending?.avgOrderValue >= 250 && userSpending?.orderCount >= 2;
+        const qualifiesLoyal = userSpending?.orderCount >= 8 && 
+            userSpending?.totalSpent >= 1200 && 
+            userSpending?.avgOrderValue >= 200;
         
-        const isEligible = qualifiesHighSpender || qualifiesLoyal || qualifiesHighValue;
+        const qualifiesHighValue = userSpending?.avgOrderValue >= 500 && 
+            userSpending?.orderCount >= 4 && 
+            userSpending?.totalSpent >= 1000;
+        
+        const meetsBasicCriteria = qualifiesPremium || qualifiesLoyal || qualifiesHighValue;
+
+        // Check for recent VIP coupon (cooldown)
+        const hasRecentVip = await hasRecentVipCoupon(userId, 3);
+
+        // Final eligibility includes random selection and cooldown
+        const isEligible = meetsBasicCriteria && !hasRecentVip && passesRandomSelection();
 
         if (!userSpending || !isEligible) {
+            let reason = '';
+            if (!userSpending || !meetsBasicCriteria) {
+                reason = 'You do not meet the ultra-exclusive VIP criteria yet.';
+            } else if (hasRecentVip) {
+                reason = 'VIP coupons are limited to once every 3 months.';
+            } else {
+                reason = 'VIP program has limited spots. You meet criteria but weren\'t selected this time.';
+            }
+
             return res.status(400).json({ 
-                message: 'You do not qualify for VIP coupon yet',
+                message: reason,
                 requirements: {
-                    option1: 'Spend $500+ total',
-                    option2: 'Place 3+ orders AND spend $300+ total',
-                    option3: 'Average $250+ per order with 2+ orders'
+                    option1: 'Spend $2000+ total OR $1500+ with 6+ orders (Ultra Premium)',
+                    option2: 'Place 8+ orders AND spend $1200+ total AND $200+ average per order (Loyal VIP)',
+                    option3: 'Average $500+ per order with 4+ orders AND $1000+ total (High-Value)'
                 },
                 current: {
                     totalSpent: userSpending?.totalSpent || 0,
                     orderCount: userSpending?.orderCount || 0,
                     avgOrderValue: userSpending?.avgOrderValue || 0
-                }
+                },
+                exclusivity: 'VIP status is ultra-exclusive with limited availability and cooldown periods.',
+                tip: 'Keep shopping to increase your chances for future VIP consideration!'
             });
         }
 
@@ -315,21 +426,17 @@ export const createMyVipCoupon = async (req, res) => {
                     minimumAmount: existingVipCoupon.minimumAmount
                 }
             });
-        }
-
-        // Determine VIP tier and benefits
+        }        // Determine VIP tier and benefits
         const tier = getCustomerTier(userSpending);
-        const { discountPercentage, minimumAmount } = getVipBenefits(tier, userSpending.totalSpent);
+        const vipBenefits = getVipBenefits(tier, userSpending.totalSpent);
 
         const couponCode = generateCouponCode('VIP');
         const expirationDate = new Date();
-        const validityDays = tier === 'platinum' ? 120 : tier === 'gold' ? 90 : 60;
-        expirationDate.setDate(expirationDate.getDate() + validityDays);
-
-        const newCoupon = await Coupon.create({
+        const validityDays = tier === 'platinum' ? 180 : tier === 'gold' ? 120 : 90;
+        expirationDate.setDate(expirationDate.getDate() + validityDays);        const newCoupon = await Coupon.create({
             code: couponCode,
-            discountPercentage: discountPercentage,
-            minimumAmount: minimumAmount,
+            discountPercentage: vipBenefits.discountPercentage,
+            minimumAmount: vipBenefits.minimumAmount,
             expirationDate: expirationDate,
             isActive: true,
             userId: userId,
@@ -349,7 +456,8 @@ export const createMyVipCoupon = async (req, res) => {
             tier: tier,
             totalSpent: userSpending.totalSpent,
             orderCount: userSpending.orderCount,
-            avgOrderValue: userSpending.avgOrderValue
+            avgOrderValue: userSpending.avgOrderValue,
+            exclusivity: 'Congratulations! You are part of our ultra-exclusive VIP program.'
         });
 
     } catch (error) {
