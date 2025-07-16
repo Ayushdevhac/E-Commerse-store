@@ -4,7 +4,8 @@ A full-stack modern e-commerce application built with React, Node.js, Express, a
 
 > 🔒 **Enterprise-Grade Security**: Built with production-ready security features including JWT authentication, password encryption, CORS protection, rate limiting, input validation, and XSS/CSRF protection.
 
-![E-Commerce Store](./frontend/public/screenshot1-for-readme.png,)
+![E-Commerce Store](./frontend/public/screenshot1-for-readme.png)
+![E-Commerce Store - Admin Dashboard](./frontend/public/screenshot2-for-readme.png)
 
 ## 🌟 Features
 
