@@ -76,20 +76,25 @@ export const getAllProducts = async (req, res) => {
         const limit = Math.min(parseInt(req.query.limit) || 12, 100); // Max 100 items per page
         const skip = (page - 1) * limit;
         const sort = req.query.sort || '-createdAt';
-        const category = req.query.category;
-        const minPrice = parseFloat(req.query.minPrice) || 0;
-        const maxPrice = parseFloat(req.query.maxPrice) || Number.MAX_VALUE;
+        const categoryRaw = req.query.category;
+        const minPriceRaw = req.query.minPrice;
+        const maxPriceRaw = req.query.maxPrice;
         const search = req.query.search;
 
         // Build filter object
-        const filter = {
-            price: { $gte: minPrice, $lte: maxPrice }
-        };
-
-        if (category && category !== 'all') {
-            filter.category = new RegExp(category, 'i');
+        const filter = {};
+        if (minPriceRaw !== undefined) {
+            const min = parseFloat(minPriceRaw);
+            if (!isNaN(min)) filter.price = { ...(filter.price || {}), $gte: min };
         }
-
+        if (maxPriceRaw !== undefined) {
+            const max = parseFloat(maxPriceRaw);
+            if (!isNaN(max)) filter.price = { ...(filter.price || {}), $lte: max };
+        }
+        if (categoryRaw && categoryRaw !== 'all') {
+            const cat = categoryRaw.trim();
+            filter.category = new RegExp(`^${cat}$`, 'i');
+        }
         if (search) {
             filter.$or = [
                 { name: new RegExp(search, 'i') },
@@ -125,9 +130,9 @@ export const getAllProducts = async (req, res) => {
                 prevPage: hasPrevPage ? page - 1 : null
             },
             filters: {
-                category,
-                minPrice,
-                maxPrice,
+                category: categoryRaw,
+                minPrice: minPriceRaw,
+                maxPrice: maxPriceRaw,
                 search,
                 sort
             }
@@ -352,7 +357,7 @@ export const getProductById = async (req, res) => {
     }
 };
 
-// Enhanced getProductsByCategory with pagination
+// Enhanced getProductsByCategory with pagination and filters
 export const getProductsByCategory = async (req, res) => {
     try {
         const { category } = req.params;
@@ -360,6 +365,9 @@ export const getProductsByCategory = async (req, res) => {
         const limit = Math.min(parseInt(req.query.limit) || 12, 100);
         const skip = (page - 1) * limit;
         const sort = req.query.sort || '-createdAt';
+        const minPriceRaw = req.query.minPrice;
+        const maxPriceRaw = req.query.maxPrice;
+        const search = req.query.search;
         
         if (!category) {
             return res.status(400).json({ message: 'Category is required' });
@@ -368,8 +376,32 @@ export const getProductsByCategory = async (req, res) => {
         // Decode URI component and normalize
         const normalizedCategory = decodeURIComponent(category).toLowerCase().trim();
         
-        // Build query
+        // Build query with category and additional filters
         const filter = { category: new RegExp(`^${normalizedCategory}$`, 'i') };
+        
+        // Add price filters
+        if (minPriceRaw !== undefined) {
+            const min = parseFloat(minPriceRaw);
+            if (!isNaN(min)) filter.price = { ...(filter.price || {}), $gte: min };
+        }
+        if (maxPriceRaw !== undefined) {
+            const max = parseFloat(maxPriceRaw);
+            if (!isNaN(max)) filter.price = { ...(filter.price || {}), $lte: max };
+        }
+        
+        // Add search filter
+        if (search) {
+            filter.$and = [
+                { category: new RegExp(`^${normalizedCategory}$`, 'i') },
+                {
+                    $or: [
+                        { name: new RegExp(search, 'i') },
+                        { description: new RegExp(search, 'i') }
+                    ]
+                }
+            ];
+            delete filter.category; // Remove category from root since it's in $and
+        }
         
         // Execute queries in parallel
         const [products, totalProducts] = await Promise.all([
@@ -382,7 +414,8 @@ export const getProductsByCategory = async (req, res) => {
         ]);
         
         const totalPages = Math.ceil(totalProducts / limit);
-        
+
+        // Respond with products, pagination and filters
         res.status(200).json({
             products,
             pagination: {
@@ -391,9 +424,17 @@ export const getProductsByCategory = async (req, res) => {
                 totalProducts,
                 limit,
                 hasNextPage: page < totalPages,
-                hasPrevPage: page > 1
+                hasPrevPage: page > 1,
+                nextPage: page < totalPages ? page + 1 : null,
+                prevPage: page > 1 ? page - 1 : null
             },
-            category: normalizedCategory
+            filters: {
+                category: normalizedCategory,
+                minPrice: minPriceRaw,
+                maxPrice: maxPriceRaw,
+                search,
+                sort
+            }
         });
     } catch (error) {
         console.error('Error fetching products by category:', error.message);

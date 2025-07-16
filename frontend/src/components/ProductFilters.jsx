@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Filter, X, ChevronDown } from 'lucide-react';
 
@@ -11,10 +11,18 @@ const ProductFilters = ({
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [localFilters, setLocalFilters] = useState(filters);
-
-    useEffect(() => {
+    const debounceRef = useRef(null);    useEffect(() => {
         setLocalFilters(filters);
     }, [filters]);
+
+    // Cleanup debounce timeout on unmount
+    useEffect(() => {
+        return () => {
+            if (debounceRef.current) {
+                clearTimeout(debounceRef.current);
+            }
+        };
+    }, []);
 
     const handleLocalChange = (key, value) => {
         const newFilters = { ...localFilters, [key]: value };
@@ -24,7 +32,17 @@ const ProductFilters = ({
 
     const handlePriceChange = (key, value) => {
         const numValue = value === '' ? null : parseFloat(value);
-        handleLocalChange(key, numValue);
+        const newFilters = { ...localFilters, [key]: numValue };
+        setLocalFilters(newFilters);
+        
+        // Debounce price filter changes to avoid too many API calls
+        if (debounceRef.current) {
+            clearTimeout(debounceRef.current);
+        }
+        
+        debounceRef.current = setTimeout(() => {
+            onFiltersChange(newFilters);
+        }, 500); // 500ms debounce
     };
 
     const sortOptions = [
@@ -85,17 +103,18 @@ const ProductFilters = ({
                     <div>
                         <label className="block text-sm font-medium text-gray-300 mb-2">
                             Category
-                        </label>
-                        <select
+                        </label>                        <select
                             value={localFilters.category || ''}
                             onChange={(e) => handleLocalChange('category', e.target.value || null)}
                             className="w-full px-3 py-2 bg-gray-700 text-gray-300 rounded-lg border border-gray-600 focus:border-emerald-500 focus:outline-none"
                             disabled={isLoading}
                         >
                             <option value="">All Categories</option>
-                            {categories.map((cat) => (
+                            {categories
+                                .filter(cat => cat._id && isNaN(cat._id)) // Filter out numeric categories
+                                .map((cat) => (
                                 <option key={cat._id} value={cat._id}>
-                                    {cat._id} ({cat.count})
+                                    {cat._id.charAt(0).toUpperCase() + cat._id.slice(1)} ({cat.count})
                                 </option>
                             ))}
                         </select>

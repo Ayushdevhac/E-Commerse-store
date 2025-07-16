@@ -14,10 +14,9 @@ export const useProductStore = create((set, get) => ({
 		limit: 12,
 		hasNextPage: false,
 		hasPrevPage: false
-	},
-	filters: {
+	},	filters: {
 		category: null,
-		minPrice: 0,
+		minPrice: null,
 		maxPrice: null,
 		search: '',		sort: '-createdAt'
 	},
@@ -82,17 +81,26 @@ export const useProductStore = create((set, get) => ({
 			set({ error: "Failed to fetch products", loading: false });
 			showToast.error(error.response?.data?.message || "Failed to fetch products");
 		}
-	},
-
-	// Enhanced fetchProductsByCategory with pagination
+	},	// Enhanced fetchProductsByCategory with pagination and filters
 	fetchProductsByCategory: async (category, page = 1, options = {}) => {
-		set({ loading: true, products: [], error: null });
+		set({ loading: true, error: null });
 		try {
 			const params = new URLSearchParams({
 				page: page.toString(),
 				limit: options.limit || get().pagination.limit.toString(),
 				sort: options.sort || get().filters.sort
 			});
+
+			// Add price filters if provided and valid
+			if (options.minPrice !== undefined && options.minPrice !== null && options.minPrice > 0) {
+				params.append('minPrice', options.minPrice.toString());
+			}
+			if (options.maxPrice !== undefined && options.maxPrice !== null && options.maxPrice > 0) {
+				params.append('maxPrice', options.maxPrice.toString());
+			}
+			if (options.search && options.search.trim()) {
+				params.append('search', options.search.trim());
+			}
 
 			const response = await axios.get(`/products/category/${category}?${params}`);
 			
@@ -101,7 +109,14 @@ export const useProductStore = create((set, get) => ({
 				loading: false, 
 				productType: 'category',
 				pagination: response.data.pagination,
-				filters: { ...get().filters, category: response.data.category }
+				filters: { 
+					...get().filters, 
+					...response.data.filters,
+					// Preserve the actual filter values that were applied
+					minPrice: options.minPrice || null,
+					maxPrice: options.maxPrice || null,
+					search: options.search || ''
+				}
 			});
 		} catch (error) {
 			console.error("Error fetching products by category:", error);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useProductStore } from "../stores/useProductStore";
 import useCategoryStore from "../stores/useCategoryStore";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -22,11 +22,20 @@ const CategoryPage = () => {	const {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [categoryInfo, setCategoryInfo] = useState(null);
 	const [localFilters, setLocalFilters] = useState({
-		sort: '-createdAt'
+		sort: '-createdAt',
+		minPrice: null,
+		maxPrice: null,
+		search: ''
 	});
 
 	// Get current page from URL
-	const currentPage = parseInt(searchParams.get('page')) || 1;
+	const currentPage = parseInt(searchParams.get('page')) || 1;	// Memoized fetch function to prevent unnecessary re-renders
+	const fetchProducts = useCallback(() => {
+		if (category) {
+			fetchProductsByCategory(category, currentPage, localFilters);
+		}
+	}, [fetchProductsByCategory, category, currentPage, localFilters]);
+
 	useEffect(() => {
 		// Fetch active categories for filter dropdown
 		fetchActiveCategories();
@@ -42,26 +51,39 @@ const CategoryPage = () => {	const {
 	}, [category, clearProducts]);
 
 	useEffect(() => {
-		if (category) {
-			fetchProductsByCategory(category, currentPage, localFilters);
-		}
-	}, [fetchProductsByCategory, category, currentPage, localFilters]);
-
+		fetchProducts();
+	}, [fetchProducts]);
 	const handlePageChange = (page) => {
-		setSearchParams({ page: page.toString() });
-		window.scrollTo({ top: 0, behavior: 'smooth' });
+		if (page !== currentPage) {
+			setSearchParams({ page: page.toString() });
+			window.scrollTo({ top: 0, behavior: 'smooth' });
+		}
 	};
 
-	const handleFiltersChange = (newFilters) => {
-		setLocalFilters(newFilters);
-		// Reset to page 1 when filters change
-		setSearchParams({ page: '1' });
-	};
+	const handleFiltersChange = useCallback((newFilters) => {
+		// Only update if filters actually changed
+		const filtersChanged = JSON.stringify(localFilters) !== JSON.stringify(newFilters);
+		if (filtersChanged) {
+			setLocalFilters(newFilters);
+			// Reset to page 1 when filters change
+			if (currentPage !== 1) {
+				setSearchParams({ page: '1' });
+			}
+		}
+	}, [localFilters, currentPage, setSearchParams]);
 
-	const handleClearFilters = () => {
-		setLocalFilters({ sort: '-createdAt' });
-		setSearchParams({ page: '1' });
-	};
+	const handleClearFilters = useCallback(() => {
+		const clearedFilters = { 
+			sort: '-createdAt',
+			minPrice: null,
+			maxPrice: null,
+			search: ''
+		};
+		setLocalFilters(clearedFilters);
+		if (currentPage !== 1) {
+			setSearchParams({ page: '1' });
+		}
+	}, [currentPage, setSearchParams]);
 
 	if (loading && products.length === 0) {
 		return <LoadingSpinner />;
@@ -135,21 +157,21 @@ const CategoryPage = () => {	const {
 						</div>
 					)}
 				</motion.div>				{/* Pagination */}
-				{pagination.totalPages > 1 && (
+				{pagination && pagination.totalPages > 1 && (
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ duration: 0.8, delay: 0.4 }}
 					>
 						<Pagination
-							currentPage={pagination.currentPage}
+							currentPage={pagination.currentPage || currentPage}
 							totalPages={pagination.totalPages}
 							totalProducts={pagination.totalProducts}
 							limit={pagination.limit}
 							onPageChange={handlePageChange}
 						/>
 					</motion.div>
-				)}			</div>
+				)}</div>
 		</div>
 	);
 };
