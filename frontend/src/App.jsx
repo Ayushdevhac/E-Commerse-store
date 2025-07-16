@@ -31,18 +31,25 @@ function App() {
 	const { user, checkAuth, checkingAuth } = useUserStore();
 	const { getCartItems } = useCartStore();
 	const { getWishlist } = useWishlistStore();
+
 	useEffect(() => {
-		checkAuth();
+		checkAuth().catch(error => {
+			console.error('Auth check failed:', error);
+		});
 	}, [checkAuth]);
 
 	useEffect(() => {
 		if (!user) return;
 
-		getCartItems();
-		getWishlist();
+		Promise.all([
+			getCartItems().catch(error => console.error('Failed to load cart:', error)),
+			getWishlist().catch(error => console.error('Failed to load wishlist:', error))
+		]);
 	}, [getCartItems, getWishlist, user]);
 
-	if (checkingAuth) return <LoadingSpinner />;
+	if (checkingAuth) {
+		return <LoadingSpinner />;
+	}
 
 	return (
 		<div className='min-h-screen bg-gray-900 text-white relative overflow-x-hidden'>
