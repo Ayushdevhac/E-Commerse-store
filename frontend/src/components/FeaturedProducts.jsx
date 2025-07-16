@@ -7,11 +7,8 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import showToast from "../lib/toast";
 
-const FeaturedProducts = ({ featuredProducts }) => {
-	// Early return if no featured products
-	if (!featuredProducts || featuredProducts.length === 0) {
-		return null;
-	}	const [currentIndex, setCurrentIndex] = useState(0);
+const FeaturedProducts = ({ featuredProducts = [] }) => {
+	const [currentIndex, setCurrentIndex] = useState(0);
 	const [itemsPerPage, setItemsPerPage] = useState(4);
 	const [hoveredProduct, setHoveredProduct] = useState(null);
 	const [isAutoPlaying, setIsAutoPlaying] = useState(true);
@@ -34,7 +31,7 @@ const FeaturedProducts = ({ featuredProducts }) => {
 		return () => window.removeEventListener("resize", handleResize);
 	}, []);	// Auto-play functionality with progress
 	useEffect(() => {
-		if (!isAutoPlaying || featuredProducts.length <= itemsPerPage) {
+		if (!isAutoPlaying || !featuredProducts || featuredProducts.length <= itemsPerPage) {
 			setProgress(0);
 			return;
 		}
@@ -84,7 +81,9 @@ const FeaturedProducts = ({ featuredProducts }) => {
 
 		window.addEventListener('keydown', handleKeyDown);
 		return () => window.removeEventListener('keydown', handleKeyDown);
-	}, [prevSlide, nextSlide, isAutoPlaying]);const nextSlide = useCallback(() => {
+	}, [prevSlide, nextSlide, isAutoPlaying]);	const nextSlide = useCallback(() => {
+		if (!featuredProducts || featuredProducts.length === 0) return;
+		
 		setCurrentIndex((prevIndex) => {
 			const nextIndex = prevIndex + itemsPerPage;
 			// If we've reached or passed the end, go back to the beginning
@@ -98,6 +97,8 @@ const FeaturedProducts = ({ featuredProducts }) => {
 	}, [itemsPerPage, featuredProducts.length]);
 
 	const prevSlide = useCallback(() => {
+		if (!featuredProducts || featuredProducts.length === 0) return;
+		
 		setCurrentIndex((prevIndex) => {
 			// If we're at the beginning, go to the last complete page
 			if (prevIndex <= 0) {
@@ -129,10 +130,25 @@ const FeaturedProducts = ({ featuredProducts }) => {
 
 	const handleProductClick = (productId) => {
 		navigate(`/product/${productId}`);
-	};
-	// With infinite looping, buttons are never disabled
+	};	// With infinite looping, buttons are never disabled
 	const isStartDisabled = false;
 	const isEndDisabled = false;
+	// Handle empty state
+	if (!featuredProducts || featuredProducts.length === 0) {
+		return (
+			<div className='py-16 bg-gradient-to-b from-gray-900 to-gray-800'>
+				<div className='container mx-auto px-4'>
+					<div className='text-center'>
+						<h2 className='text-2xl font-bold text-gray-400 mb-4'>
+							No Featured Products Available
+						</h2>
+						<p className='text-gray-500'>Check back later for our latest featured items!</p>
+					</div>
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<div className='py-16 bg-gradient-to-b from-gray-900 to-gray-800'>
 			<div className='container mx-auto px-4'>
