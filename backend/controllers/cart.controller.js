@@ -20,15 +20,17 @@ export const getCartProducts = async (req, res) => {
         const productIds = user.cartItems.map(item => item.product);
         const products = await Product.find({ _id: { $in: productIds } });
         
-        const cartItems = products.map(product => {
-            const item = user.cartItems.find(cartItem => 
-                cartItem.product && cartItem.product.toString() === product._id.toString()
-            );
+        const cartItems = user.cartItems.map(cartItem => {
+            const product = products.find(p => p._id.toString() === cartItem.product.toString());
+            if (!product) return null;
+            
             return {
                 ...product.toJSON(), 
-                quantity: item ? item.quantity : 1
+                quantity: cartItem.quantity,
+                selectedSize: cartItem.size || null,
+                cartId: cartItem.size ? `${product._id}-${cartItem.size}` : product._id.toString()
             };
-        });
+        }).filter(Boolean); // Remove null items
         
         return res.status(200).json(cartItems);
     } catch (error) {
@@ -38,18 +40,37 @@ export const getCartProducts = async (req, res) => {
 }
 export const addToCart = async (req, res) => {
     try {
-        const { productId } = req.body;
+        const { productId, size } = req.body;
         const user = req.user;
 
         if (!productId) {
             return res.status(400).json({ message: 'Product ID is required' });
         }
         
+        // Verify product exists
+        const product = await Product.findById(productId);
+        if (!product) {
+            return res.status(404).json({ message: 'Product not found' });
+        }
+        
+        // If product has sizes, validate the provided size
+        if (product.sizes && product.sizes.length > 0) {
+            if (!size) {
+                return res.status(400).json({ message: 'Size is required for this product' });
+            }
+            if (!product.sizes.includes(size)) {
+                return res.status(400).json({ message: 'Invalid size for this product' });
+            }
+        }
+        
         // Clean up any invalid cart items first
         user.cartItems = cleanupCartItems(user.cartItems);
         
+        // For products with sizes, check both product ID and size
         const existingItem = user.cartItems.find(item => 
-            item.product && item.product.toString() === productId
+            item.product && 
+            item.product.toString() === productId &&
+            ((!size && !item.size) || item.size === size)
         );
         
         if (existingItem) {
@@ -57,7 +78,11 @@ export const addToCart = async (req, res) => {
             existingItem.quantity += 1;
         } else {
             // Add new item to cart
-            user.cartItems.push({ product: productId, quantity: 1 });
+            const cartItem = { product: productId, quantity: 1 };
+            if (size) {
+                cartItem.size = size;
+            }
+            user.cartItems.push(cartItem);
         }
         
         await user.save();

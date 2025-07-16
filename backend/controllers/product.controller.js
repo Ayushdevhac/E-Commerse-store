@@ -28,7 +28,36 @@ export const validateProductCreation = [
         .escape(),
     body('image')
         .notEmpty()
-        .withMessage('Image is required')
+        .withMessage('Image is required'),
+    body('sizes')
+        .optional()
+        .isArray()
+        .withMessage('Sizes must be an array'),
+    body('sizes.*')
+        .optional()
+        .isString()
+        .withMessage('Each size must be a string'),
+    body('stock')
+        .optional()
+        .custom((value, { req }) => {
+            if (req.body.sizes && req.body.sizes.length > 0) {
+                // If sizes are provided, stock should be an object with size keys
+                if (typeof value !== 'object') {
+                    throw new Error('Stock must be an object when sizes are specified');
+                }
+                for (let size of req.body.sizes) {
+                    if (!value[size] || value[size] < 0) {
+                        throw new Error(`Stock for size ${size} must be specified and non-negative`);
+                    }
+                }
+            } else {
+                // If no sizes, stock can be a simple number
+                if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
+                    throw new Error('Stock must be a non-negative integer');
+                }
+            }
+            return true;
+        })
 ];
 
 export const validateProductId = [
@@ -188,12 +217,38 @@ export const createProducts = async (req, res) => {
                 message: 'Validation error',
                 errors: errors.array()
             });
-        }        const { name, price, description, image, category } = req.body;
+        }        const { name, price, description, image, category, sizes, stock } = req.body;
 
         // Convert price to number and validate
         const priceNum = parseFloat(price);
         if (isNaN(priceNum) || priceNum <= 0) {
             return res.status(400).json({ message: 'Invalid price value' });
+        }
+
+        // Process sizes and stock
+        let processedSizes = [];
+        let processedStock = new Map();
+        
+        if (sizes && sizes.length > 0) {
+            // Validate and process sizes
+            const validSizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '28', '30', '32', '34', '36', '38', '40', '42', '44', '46', '48', '50', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'];
+            processedSizes = sizes.map(size => size.toString().toUpperCase()).filter(size => validSizes.includes(size));
+            
+            // Process stock for each size
+            if (stock && typeof stock === 'object') {
+                for (let size of processedSizes) {
+                    const stockValue = parseInt(stock[size]) || 0;
+                    processedStock.set(size, Math.max(0, stockValue));
+                }
+            } else {
+                // Default stock if not provided
+                for (let size of processedSizes) {
+                    processedStock.set(size, 10); // Default stock of 10 per size
+                }
+            }
+        } else if (stock && typeof stock === 'number') {
+            // Simple stock for products without sizes
+            processedStock.set('default', Math.max(0, parseInt(stock)));
         }
 
         let cloudinaryResponse;
@@ -216,13 +271,25 @@ export const createProducts = async (req, res) => {
         } catch (error) {
             console.error('Cloudinary upload error:', error);
             return res.status(500).json({ message: 'Image upload failed' });
-        }        const product = await Product.create({
+        }
+
+        const productData = {
             name: name.trim(),
             price: priceNum,
             description: description.trim(),
             image: cloudinaryResponse.secure_url,
             category: category.toLowerCase().trim()
-        });
+        };
+
+        // Add sizes and stock if provided
+        if (processedSizes.length > 0) {
+            productData.sizes = processedSizes;
+            productData.stock = processedStock;
+        } else if (processedStock.has('default')) {
+            productData.stock = processedStock;
+        }
+
+        const product = await Product.create(productData);
 
         // Clear relevant caches
         await Promise.all([

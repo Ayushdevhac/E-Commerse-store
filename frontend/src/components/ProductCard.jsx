@@ -4,21 +4,35 @@ import { useUserStore } from "../stores/useUserStore";
 import { useCartStore } from "../stores/useCartStore";
 import { useWishlistStore } from "../stores/useWishlistStore";
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 
 const ProductCard = ({ product }) => {
 	const { user } = useUserStore();
 	const { addToCart } = useCartStore();
 	const { toggleWishlist: toggleWishlistAction, isInWishlist } = useWishlistStore();
 	const navigate = useNavigate();
-		const handleAddToCart = (e) => {
+	const [selectedSize, setSelectedSize] = useState(product.sizes?.[0] || null);
+	const [showSizeSelector, setShowSizeSelector] = useState(false);
+	const handleAddToCart = (e) => {
 		e.stopPropagation(); // Prevent navigation when clicking add to cart
 		if (!user) {
 			showToast.error("Please login to add products to cart", { id: "login" });
 			return;
-		} else {
-			// add to cart
-			addToCart(product);
 		}
+		
+		// If product has sizes but no size selected, show size selector
+		if (product.sizes && product.sizes.length > 0 && !selectedSize) {
+			setShowSizeSelector(true);
+			showToast.error("Please select a size");
+			return;
+		}
+		
+		// Add to cart with selected size
+		const productToAdd = product.sizes && product.sizes.length > 0 
+			? { ...product, selectedSize }
+			: product;
+			
+		addToCart(productToAdd);
 	};
 
 	const handleWishlistToggle = async (e) => {		e.stopPropagation(); // Prevent navigation when clicking wishlist
@@ -49,12 +63,60 @@ const ProductCard = ({ product }) => {
 			</div>
 
 			<div className='mt-4 px-3 sm:px-5 pb-3 sm:pb-5 flex-1 flex flex-col'>
-				<h5 className='text-lg sm:text-xl font-semibold tracking-tight text-white line-clamp-2 mb-2'>{product.name}</h5>
-				{product.description && (
+				<h5 className='text-lg sm:text-xl font-semibold tracking-tight text-white line-clamp-2 mb-2'>{product.name}</h5>				{product.description && (
 					<p className='text-sm text-gray-400 line-clamp-2 mb-3 flex-1'>
 						{product.description}
 					</p>
 				)}
+						{/* Available Sizes */}
+				{product.sizes && product.sizes.length > 0 && (
+					<div className="mb-3">
+						<p className="text-xs text-gray-400 mb-1">Available sizes:</p>
+						{showSizeSelector ? (
+							<div className="flex flex-wrap gap-1">
+								{product.sizes.map((size) => (
+									<button
+										key={size}
+										onClick={(e) => {
+											e.stopPropagation();
+											setSelectedSize(size);
+											setShowSizeSelector(false);
+										}}
+										className={`px-2 py-1 rounded text-xs transition-colors ${
+											selectedSize === size
+												? 'bg-emerald-600 text-white'
+												: 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+										}`}
+									>
+										{size}
+									</button>
+								))}
+							</div>
+						) : (
+							<div className="flex flex-wrap gap-1">
+								{selectedSize && (
+									<span className="bg-emerald-600 text-white px-2 py-1 rounded text-xs mr-2">
+										Selected: {selectedSize}
+									</span>
+								)}
+								{product.sizes.slice(0, selectedSize ? 3 : 5).map((size) => (
+									<span 
+										key={size} 
+										className="bg-gray-700 text-gray-300 px-2 py-1 rounded text-xs"
+									>
+										{size}
+									</span>
+								))}
+								{product.sizes.length > (selectedSize ? 3 : 5) && (
+									<span className="text-xs text-gray-400">
+										+{product.sizes.length - (selectedSize ? 3 : 5)} more
+									</span>
+								)}
+							</div>
+						)}
+					</div>
+				)}
+				
 				<div className='mt-auto'>
 					<div className='mb-3 sm:mb-4 flex items-center justify-between'>
 						<p>

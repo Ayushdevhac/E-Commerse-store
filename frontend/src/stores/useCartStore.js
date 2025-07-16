@@ -50,19 +50,38 @@ export const useCartStore = create((set, get) => ({
 	},	clearCart: async () => {
 		set({ cart: [], coupon: null, total: 0, subtotal: 0 });
 	},
-	
-	addToCart: async (product) => {
+		addToCart: async (product) => {
 		try {
-			await axios.post("/cart", { productId: product._id });
+			const productData = {
+				productId: product._id
+			};
+			
+			// Include size if product has sizes
+			if (product.selectedSize) {
+				productData.size = product.selectedSize;
+			}
+			
+			await axios.post("/cart", productData);
 			showToast.success("Product added to cart");
 
 			set((prevState) => {
-				const existingItem = prevState.cart.find((item) => item._id === product._id);
+				// For products with sizes, consider size in uniqueness check
+				const cartKey = product.selectedSize ? `${product._id}-${product.selectedSize}` : product._id;
+				const existingItem = prevState.cart.find((item) => {
+					const itemKey = item.selectedSize ? `${item._id}-${item.selectedSize}` : item._id;
+					return itemKey === cartKey;
+				});
+				
 				const newCart = existingItem
-					? prevState.cart.map((item) =>
-							item._id === product._id ? { ...item, quantity: item.quantity + 1 } : item
-					  )
-					: [...prevState.cart, { ...product, quantity: 1 }];
+					? prevState.cart.map((item) => {
+						const itemKey = item.selectedSize ? `${item._id}-${item.selectedSize}` : item._id;
+						return itemKey === cartKey ? { ...item, quantity: item.quantity + 1 } : item;
+					})
+					: [...prevState.cart, { 
+						...product, 
+						quantity: 1,
+						cartId: cartKey // Add unique cart ID for products with sizes
+					}];
 				return { cart: newCart };
 			});
 			get().calculateTotals();

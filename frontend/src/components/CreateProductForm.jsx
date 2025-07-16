@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { PlusCircle, Upload, Loader } from "lucide-react";
+import { PlusCircle, Upload, Loader, X, Plus } from "lucide-react";
 import { useProductStore } from "../stores/useProductStore";
 import useCategoryStore from "../stores/useCategoryStore";
 
@@ -11,9 +11,19 @@ const CreateProductForm = () => {
 		price: "",
 		category: "",
 		image: "",
+		sizes: [],
+		stock: {}
 	});
+	const [showSizes, setShowSizes] = useState(false);
 	const { createProduct, loading } = useProductStore();
 	const { categories, fetchCategories, loading: categoriesLoading } = useCategoryStore();
+
+	// Common sizes for different categories
+	const sizeOptions = {
+		clothing: ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'],
+		shoes: ['6', '7', '8', '9', '10', '11', '12', '13', '14', '15'],
+		pants: ['28', '30', '32', '34', '36', '38', '40', '42', '44', '46', '48', '50']
+	};
 
 	useEffect(() => {
 		fetchCategories();
@@ -21,7 +31,16 @@ const CreateProductForm = () => {
 
 	// Filter only active categories for product creation
 	const activeCategories = categories.filter(category => category.isActive);
-	const handleSubmit = async (e) => {
+
+	// Check if category typically needs sizes
+	const categoryNeedsSizes = (category) => {
+		const sizeCats = ['clothing', 'shirts', 't-shirts', 'pants', 'jeans', 'jackets', 'shoes', 'sneakers', 'boots'];
+		return sizeCats.some(cat => category.toLowerCase().includes(cat));
+	};
+
+	useEffect(() => {
+		setShowSizes(categoryNeedsSizes(newProduct.category));
+	}, [newProduct.category]);	const handleSubmit = async (e) => {
 		e.preventDefault();
 		try {
 			// Convert price to number before sending
@@ -30,13 +49,72 @@ const CreateProductForm = () => {
 				price: parseFloat(newProduct.price)
 			};
 			
+			// Only include sizes and stock if sizes are selected
+			if (newProduct.sizes.length > 0) {
+				productData.sizes = newProduct.sizes;
+				productData.stock = newProduct.stock;
+			} else {
+				// Remove sizes and stock if not needed
+				delete productData.sizes;
+				delete productData.stock;
+			}
+			
 			await createProduct(productData);
 			
-			setNewProduct({ name: "", description: "", price: "", category: "", image: "" });
+			setNewProduct({ 
+				name: "", 
+				description: "", 
+				price: "", 
+				category: "", 
+				image: "",
+				sizes: [],
+				stock: {}
+			});
+			setShowSizes(false);
 		} catch(error) {
 			console.log("error creating a product");
 			console.error(error);
+		}
+	};
 
+	const handleSizeToggle = (size) => {
+		const updatedSizes = newProduct.sizes.includes(size)
+			? newProduct.sizes.filter(s => s !== size)
+			: [...newProduct.sizes, size];
+		
+		const updatedStock = { ...newProduct.stock };
+		
+		if (updatedSizes.includes(size) && !updatedStock[size]) {
+			updatedStock[size] = 10; // Default stock
+		} else if (!updatedSizes.includes(size)) {
+			delete updatedStock[size];
+		}
+		
+		setNewProduct({ 
+			...newProduct, 
+			sizes: updatedSizes,
+			stock: updatedStock
+		});
+	};
+
+	const handleStockChange = (size, stock) => {
+		setNewProduct({
+			...newProduct,
+			stock: {
+				...newProduct.stock,
+				[size]: Math.max(0, parseInt(stock) || 0)
+			}
+		});
+	};
+
+	const getSizeOptionsForCategory = () => {
+		const category = newProduct.category.toLowerCase();
+		if (category.includes('shoe') || category.includes('sneaker') || category.includes('boot')) {
+			return sizeOptions.shoes;
+		} else if (category.includes('pant') || category.includes('jean')) {
+			return sizeOptions.pants;
+		} else {
+			return sizeOptions.clothing;
 		}
 	};
 
@@ -142,8 +220,69 @@ const CreateProductForm = () => {
 								</option>
 							))
 						)}
-					</select>
-				</div>
+					</select>				</div>
+
+				{/* Sizes Section */}
+				{(showSizes || newProduct.sizes.length > 0) && (
+					<div>
+						<div className="flex items-center justify-between mb-3">
+							<label className='block text-sm font-medium text-gray-300'>
+								Available Sizes
+							</label>
+							<button
+								type="button"
+								onClick={() => setShowSizes(!showSizes)}
+								className="text-sm text-emerald-400 hover:text-emerald-300"
+							>
+								{showSizes ? 'Hide Sizes' : 'Add Sizes'}
+							</button>
+						</div>
+						
+						{showSizes && (
+							<div className="space-y-4">
+								<div className="grid grid-cols-4 gap-2">
+									{getSizeOptionsForCategory().map((size) => (
+										<button
+											key={size}
+											type="button"
+											onClick={() => handleSizeToggle(size)}
+											className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+												newProduct.sizes.includes(size)
+													? 'bg-emerald-600 text-white'
+													: 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+											}`}
+										>
+											{size}
+										</button>
+									))}
+								</div>
+								
+								{/* Stock Management */}
+								{newProduct.sizes.length > 0 && (
+									<div className="space-y-2">
+										<label className='block text-sm font-medium text-gray-300'>
+											Stock per Size
+										</label>
+										<div className="grid grid-cols-2 gap-3">
+											{newProduct.sizes.map((size) => (
+												<div key={size} className="flex items-center space-x-2">
+													<span className="text-sm text-gray-300 w-8">{size}:</span>
+													<input
+														type="number"
+														min="0"
+														value={newProduct.stock[size] || 0}
+														onChange={(e) => handleStockChange(size, e.target.value)}
+														className="flex-1 bg-gray-700 border border-gray-600 rounded-md px-2 py-1 text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+													/>
+												</div>
+											))}
+										</div>
+									</div>
+								)}
+							</div>
+						)}
+					</div>
+				)}
 
 				<div className='mt-1 flex items-center'>
 					<input type='file' id='image' className='sr-only' accept='image/*' onChange={handleImageChange} />

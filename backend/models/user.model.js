@@ -17,7 +17,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: [true, "Password is required"],
     minlength: [8, "Password must be at least 8 characters long"],
-  },   cartItems: [
+  },  cartItems: [
     {
         quantity: {
             type: Number,
@@ -26,9 +26,13 @@ const userSchema = new mongoose.Schema({
         product:{
             type:mongoose.Schema.Types.ObjectId,
             ref: 'Product',
+        },
+        size: {
+            type: String,
+            required: false // Optional, only for products that have sizes
         }
     }
-  ] ,  wishlist: [
+  ] ,wishlist: [
     {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Product',
