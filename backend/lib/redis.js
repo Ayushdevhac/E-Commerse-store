@@ -14,21 +14,26 @@ client.on("error", function(err) {
 let isConnected = false;
 
 export const connectRedis = async () => {
-  if (!isConnected) {
-    try {
-      await client.connect();
+  try {
+    // Check if client is already open
+    if (client.isOpen) {
       isConnected = true;
-      console.log("Redis connected successfully");
-    } catch (error) {
-      console.error("Redis connection error:", error);
-      isConnected = false;
+      return true;
     }
+    
+    await client.connect();
+    isConnected = true;
+    console.log("Redis connected successfully");
+    return true;
+  } catch (error) {
+    console.error("Redis connection error:", error);
+    isConnected = false;
+    return false;
   }
-  return isConnected;
 };
 
 export const disconnectRedis = async () => {
-  if (isConnected) {
+  if (isConnected && client.isOpen) {
     try {
       await client.quit();
       isConnected = false;
@@ -39,10 +44,16 @@ export const disconnectRedis = async () => {
   }
 };
 
-// Ensure connection is available for operations
+// Ensure connection is available for operations (serverless-friendly)
 export const ensureRedisConnection = async () => {
-  if (!isConnected) {
-    await connectRedis();
+  try {
+    // For serverless, always check if client is open
+    if (!client.isOpen) {
+      await connectRedis();
+    }
+    return client.isOpen;
+  } catch (error) {
+    console.error("Error ensuring Redis connection:", error);
+    return false;
   }
-  return isConnected;
 };

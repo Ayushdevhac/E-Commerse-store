@@ -1,16 +1,50 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { client } from '../lib/redis.js';
+import { client, ensureRedisConnection } from '../lib/redis.js';
 import { isPublicRoute } from './security.middleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Create logs directory if it doesn't exist
-const logsDir = path.join(__dirname, '..', 'logs');
-if (!fs.existsSync(logsDir)) {
-    fs.mkdirSync(logsDir, { recursive: true });
+// Create logs directory if it doesn't exist (only in non-serverless environments)
+let logsDir;
+let canWriteToFS = true;
+
+// Check if we're in a serverless environment with multiple detection methods
+const isServerless = () => {
+    return !!(
+        process.env.VERCEL ||
+        process.env.VERCEL_ENV ||
+        process.env.AWS_LAMBDA_FUNCTION_NAME ||
+        process.env.LAMBDA_TASK_ROOT ||
+        process.env.AWS_EXECUTION_ENV ||
+        process.env.NETLIFY ||
+        process.platform === 'unknown' ||
+        process.env.NODE_ENV === 'production' && process.cwd().includes('/var/task')
+    );
+};
+
+try {
+    if (isServerless()) {
+        canWriteToFS = false;
+        console.log('📝 Running in serverless environment - file logging disabled, using Redis only');
+        console.log('🔍 Detected serverless indicators:', {
+            VERCEL: !!process.env.VERCEL,
+            VERCEL_ENV: !!process.env.VERCEL_ENV,
+            AWS_LAMBDA: !!process.env.AWS_LAMBDA_FUNCTION_NAME,
+            cwd: process.cwd()
+        });
+    } else {
+        logsDir = path.join(__dirname, '..', 'logs');
+        if (!fs.existsSync(logsDir)) {
+            fs.mkdirSync(logsDir, { recursive: true });
+        }
+        console.log('📝 File logging enabled, logs directory:', logsDir);
+    }
+} catch (error) {
+    console.warn('⚠️ Cannot create logs directory, disabling file logging:', error.message);
+    canWriteToFS = false;
 }
 
 // Security event types
@@ -32,8 +66,13 @@ export const SECURITY_EVENTS = {
 // Security logger class
 class SecurityLogger {
     constructor() {
-        this.logFile = path.join(logsDir, 'security.log');
-        this.alertFile = path.join(logsDir, 'security-alerts.log');
+        if (canWriteToFS && logsDir) {
+            this.logFile = path.join(logsDir, 'security.log');
+            this.alertFile = path.join(logsDir, 'security-alerts.log');
+        } else {
+            this.logFile = null;
+            this.alertFile = null;
+        }
     }
 
     // Log security event
@@ -50,12 +89,17 @@ class SecurityLogger {
             url: req?.originalUrl || null,
             method: req?.method || null,
             fingerprint: req?.fingerprint || null
-        };
-
-        // Write to log file
+        };        // Write to log file only if we can write to filesystem
         const logLine = JSON.stringify(logEntry) + '\n';
-        fs.appendFileSync(this.logFile, logLine);        // Store in Redis for real-time monitoring
+        if (canWriteToFS && this.logFile) {
+            try {
+                fs.appendFileSync(this.logFile, logLine);
+            } catch (error) {
+                console.error('Error writing to log file:', error.message);
+            }
+        }        // Store in Redis for real-time monitoring
         try {
+            await ensureRedisConnection();
             await client.lPush('security_events', JSON.stringify(logEntry));
             await client.lTrim('security_events', 0, 999); // Keep last 1000 events
             await client.expire('security_events', 86400 * 7); // Keep for 7 days
@@ -70,10 +114,14 @@ class SecurityLogger {
             SECURITY_EVENTS.SQL_INJECTION_ATTEMPT,
             SECURITY_EVENTS.XSS_ATTEMPT,
             SECURITY_EVENTS.SUSPICIOUS_ACTIVITY
-        ];
-
-        if (highPriorityEvents.includes(eventType)) {
-            fs.appendFileSync(this.alertFile, `ALERT: ${logLine}`);
+        ];        if (highPriorityEvents.includes(eventType)) {
+            if (canWriteToFS && this.alertFile) {
+                try {
+                    fs.appendFileSync(this.alertFile, `ALERT: ${logLine}`);
+                } catch (error) {
+                    console.error('Error writing to alert file:', error.message);
+                }
+            }
             console.warn(`SECURITY ALERT: ${eventType}`, details);
         }
 
@@ -84,6 +132,7 @@ class SecurityLogger {
     }    // Get recent security events
     async getRecentEvents(limit = 50) {
         try {
+            await ensureRedisConnection();
             const events = await client.lRange('security_events', 0, limit - 1);
             return events.map(event => JSON.parse(event));
         } catch (error) {

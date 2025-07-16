@@ -1,5 +1,6 @@
 import User from '../models/user.model.js';
 import { client, ensureRedisConnection } from '../lib/redis.js';
+import { ensureDBConnection } from '../lib/db.js';
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 dotenv.config();
@@ -44,6 +45,9 @@ export const signup = async (req, res) => {
     const { email, password, name } = req.body;
     
     try {
+        // Ensure database connection before any DB operations
+        await ensureDBConnection();
+        
         const userExits = await User.findOne({ email });
         if (userExits) {
             return res.status(400).json({ message: 'User already exists' });
@@ -74,6 +78,9 @@ export const signup = async (req, res) => {
 };
 export const login = async (req,res) => {
    try {
+    // Ensure database connection before any DB operations
+    await ensureDBConnection();
+    
     const { email, password } = req.body;
     if (!email || !password) {
         return res.status(400).json({ message: 'Email and password are required' });

@@ -1,5 +1,6 @@
 import { client } from '../lib/redis.js';
 import { ensureRedisConnection } from '../lib/redis.js';
+import { ensureDBConnection } from '../lib/db.js';
 import cloudinary from '../lib/cloudinary.js';
 import Product from '../models/product.model.js';
 import { body, param, query, validationResult } from 'express-validator';
@@ -54,6 +55,14 @@ export const validatePagination = [
 // Enhanced getAllProducts with pagination, filtering, and sorting
 export const getAllProducts = async (req, res) => {
     try {
+        // Ensure database connection before any DB operations
+        console.log('Ensuring DB connection for getAllProducts...');
+        await ensureDBConnection();
+        
+        // Verify connection state
+        console.log('DB connection state:', mongoose.connection.readyState);
+        console.log('DB connection host:', mongoose.connection.host);
+        
         // Check for validation errors
         const errors = validationResult(req);
         if (!errors.isEmpty()) {

@@ -9,7 +9,13 @@ const __dirname = path.dirname(__filename);
 
 class SecurityMonitor {
     constructor() {
-        this.logsDir = path.join(__dirname, '..', 'logs');
+        // Check if we're in a serverless environment
+        if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT) {
+            this.logsDir = null; // Disable file operations in serverless
+            console.log('📝 Security Monitor running in serverless mode - Redis only');
+        } else {
+            this.logsDir = path.join(__dirname, '..', 'logs');
+        }
     }
 
     // Ensure Redis connection

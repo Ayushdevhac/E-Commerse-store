@@ -19,6 +19,13 @@ export const protectRoute = async (req, res, next) => {
     try {
         const token = req.cookies.accessToken;
         
+        // Debug logging for serverless
+        console.log('Auth Debug:', {
+            hasToken: !!token,
+            cookieKeys: Object.keys(req.cookies),
+            hasSecret: !!process.env.ACCESS_TOKEN_SECRET
+        });
+        
         if (!token) {
             return res.status(401).json({ 
                 message: 'Access token required', 

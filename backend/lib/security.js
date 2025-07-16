@@ -1,10 +1,14 @@
-import { client } from '../lib/redis.js';
+import { client, ensureRedisConnection } from '../lib/redis.js';
 import crypto from 'crypto';
 
 // Initialize security settings and API keys
 export const initializeSecurity = async () => {
     try {
-        console.log('Initializing security settings...');        // Generate and store master API key
+        console.log('Initializing security settings...');
+        
+        await ensureRedisConnection();
+        
+        // Generate and store master API key
         const masterApiKey = process.env.API_KEY_MASTER || crypto.randomBytes(32).toString('hex');
         await client.setEx(`api_key:${masterApiKey}`, 86400 * 365, JSON.stringify({
             name: 'Master API Key',
@@ -119,6 +123,7 @@ export const securityHealthCheck = async () => {
 // IP blacklist management
 export const manageIPBlacklist = {    async addIP(ip, reason = 'Manual addition') {
         try {
+            await ensureRedisConnection();
             await client.sAdd('blacklisted_ips', ip);
             await client.setEx(`blacklist_reason:${ip}`, 86400 * 30, JSON.stringify({
                 reason,
@@ -143,10 +148,9 @@ export const manageIPBlacklist = {    async addIP(ip, reason = 'Manual addition'
             console.error('Error removing IP from blacklist:', error);
             return { success: false, error: error.message };
         }
-    },
-
-    async isBlacklisted(ip) {
+    },    async isBlacklisted(ip) {
         try {
+            await ensureRedisConnection();
             const result = await client.sIsMember('blacklisted_ips', ip);
             return result === true;
         } catch (error) {

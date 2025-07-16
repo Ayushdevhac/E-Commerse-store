@@ -1,4 +1,5 @@
 import { client, ensureRedisConnection } from '../lib/redis.js';
+import { ensureDBConnection } from '../lib/db.js';
 import { securityHealthCheck, manageIPBlacklist } from '../lib/security.js';
 import { securityLogger } from '../middleware/logging.middleware.js';
 
@@ -151,6 +152,9 @@ export const getCacheStats = async (req, res) => {
 // Get database statistics
 export const getDatabaseStats = async (req, res) => {
     try {
+        // Ensure database connection first
+        await ensureDBConnection();
+        
         const mongoose = await import('mongoose');
         
         // Get connection status

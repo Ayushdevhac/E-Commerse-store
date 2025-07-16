@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { client } from '../lib/redis.js';
+import { client, ensureRedisConnection } from '../lib/redis.js';
 
 // Generate API key for client applications
 export const generateAPIKey = () => {
@@ -29,9 +29,8 @@ export const validateAPIKey = async (req, res, next) => {
                 message: 'Invalid API key format',
                 code: 'INVALID_API_KEY'
             });
-        }
-
-        // Check if API key is valid (store valid keys in Redis)
+        }        // Check if API key is valid (store valid keys in Redis)
+        await ensureRedisConnection();
         const isValid = await client.exists(`api_key:${apiKey}`);
         
         if (!isValid) {
@@ -40,7 +39,9 @@ export const validateAPIKey = async (req, res, next) => {
                 message: 'Invalid API key',
                 code: 'INVALID_API_KEY'
             });
-        }        // Track API key usage
+        }
+
+        // Track API key usage
         await client.incr(`api_key_usage:${apiKey}:${new Date().toISOString().split('T')[0]}`);
         await client.expire(`api_key_usage:${apiKey}:${new Date().toISOString().split('T')[0]}`, 86400);
 
@@ -91,26 +92,43 @@ const PUBLIC_ROUTES = [
 const AUTHENTICATED_ROUTES = [
     // Payment routes for authenticated users (except checkout-success which is public)
     { method: 'POST', path: /^\/payments\/create-checkout-session$/ },
-    
-    // Cart routes
+      // Cart routes
     { method: 'GET', path: /^\/cart$/ },
     { method: 'POST', path: /^\/cart$/ },
     { method: 'DELETE', path: /^\/cart$/ },
     { method: 'PUT', path: /^\/cart\/[a-fA-F0-9]{24}$/ },
     
+    // Wishlist routes
+    { method: 'GET', path: /^\/wishlist$/ },
+    { method: 'POST', path: /^\/wishlist\/add$/ },
+    { method: 'DELETE', path: /^\/wishlist\/[a-fA-F0-9]{24}$/ },
+    { method: 'POST', path: /^\/wishlist\/toggle$/ },
+    
     // User profile routes
     { method: 'PUT', path: /^\/auth\/profile$/ },
-    
-    // Order routes
+      // Order routes
     { method: 'GET', path: /^\/orders$/ },
     { method: 'GET', path: /^\/orders\/[a-fA-F0-9]{24}$/ },
-      // Review routes for authenticated users
+    { method: 'GET', path: /^\/orders\/my-orders$/ },
+    { method: 'GET', path: /^\/orders\/admin\/all$/ },
+    { method: 'POST', path: /^\/orders$/ },
+    { method: 'PUT', path: /^\/orders\/[a-fA-F0-9]{24}$/ },    // Review routes for authenticated users
     { method: 'POST', path: /^\/reviews$/ },
     { method: 'PUT', path: /^\/reviews\/[a-fA-F0-9]{24}$/ },
     { method: 'DELETE', path: /^\/reviews\/[a-fA-F0-9]{24}$/ },
     { method: 'GET', path: /^\/reviews\/user$/ },
     { method: 'GET', path: /^\/reviews\/my-reviews$/ },
-    { method: 'GET', path: /^\/reviews\/reviewable-products$/ }
+    { method: 'GET', path: /^\/reviews\/reviewable-products$/ },
+    
+    // Admin routes for authenticated users
+    { method: 'GET', path: /^\/admin\/database\/stats$/ },
+    { method: 'GET', path: /^\/admin\/cache\/stats$/ },
+    { method: 'GET', path: /^\/admin\/security\/stats$/ },
+    { method: 'GET', path: /^\/admin\/security\/logs$/ },
+    { method: 'GET', path: /^\/admin\/analytics$/ },
+    { method: 'POST', path: /^\/admin\/products$/ },
+    { method: 'PUT', path: /^\/admin\/products\/[a-fA-F0-9]{24}$/ },
+    { method: 'DELETE', path: /^\/admin\/products\/[a-fA-F0-9]{24}$/ }
 ];
 
 // Check if a route is public
@@ -134,21 +152,39 @@ export const validateOrigin = (req, res, next) => {
         return next();
     }
 
+    // Special handling for checkout-success - completely skip all security checks
+    // since users are coming from Stripe redirects
+    if (req.path === '/payments/checkout-success') {
+        console.log('Skipping all security checks for checkout-success endpoint');
+        return next();
+    }
+
     // For authenticated routes, allow if from trusted origin
     const isAuthRoute = isAuthenticatedRoute(req.method, req.path);
 
-    const origin = req.get('Origin') || req.get('Referer');
-    const userAgent = req.get('User-Agent');
+    // Extract raw origin or referer
+    const rawOrigin = req.get('Origin') || req.get('Referer');
+    // Parse to domain origin only (strip path)
+    let hostOrigin;
+    try {
+        hostOrigin = new URL(rawOrigin).origin;
+    } catch {
+        hostOrigin = rawOrigin;
+    }
+    // ULTRA-PERMISSIVE: Accept ANY Vercel domain via suffix
+    const isVercelDomain = hostOrigin.endsWith('.vercel.app');
+
+    // Updated debug log
+    console.log('Security middleware:', { url: req.originalUrl, hostOrigin, isVercelDomain });
+
+    // Allow Vercel domains immediately
+    if (isVercelDomain) return next();
     
-    // List of allowed origins (your website domains)
-    const allowedOrigins = [
-        'http://localhost:5173',
-        'http://localhost:5174',
-        'http://localhost:3000',
-        // Add your production domain here
-        // 'https://yourdomain.com',
-        // 'https://www.yourdomain.com'
-    ];
+    // Also check if this is the main production domain from CLIENT_URL
+    if (origin && process.env.CLIENT_URL && origin === process.env.CLIENT_URL) {
+        console.log('✅ Security middleware: Allowing CLIENT_URL domain:', origin);
+        return next();
+    }
 
     // Allow requests without origin for mobile apps, but require API key
     if (!origin) {
@@ -165,19 +201,17 @@ export const validateOrigin = (req, res, next) => {
             message: 'Invalid request origin',
             code: 'INVALID_ORIGIN'
         });
-    }
-
-    // Check if origin is allowed
-    if (!allowedOrigins.includes(requestOrigin)) {
+    }    // Check if origin is allowed
+    const isAllowedOrigin = allowedOrigins.includes(requestOrigin) || isVercelDomain;
+    
+    if (!isAllowedOrigin) {
         console.warn(`Blocked request from unauthorized origin: ${requestOrigin}`);
         return res.status(403).json({ 
             message: 'Unauthorized origin',
             code: 'UNAUTHORIZED_ORIGIN'
         });
-    }
-
-    // For authenticated routes from trusted origins, skip API key requirement
-    if (isAuthRoute) {
+    }    // For authenticated routes from trusted origins, skip API key requirement
+    if (isAuthRoute && (allowedOrigins.includes(requestOrigin) || isVercelDomain)) {
         return next();
     }
 
@@ -190,21 +224,32 @@ export const validateOrigin = (req, res, next) => {
         /curl/i,
         /wget/i,
         /postman/i
-    ];
-
-    // Allow legitimate browsers and mobile apps
+    ];    // Allow legitimate browsers and mobile apps
     const legitPatterns = [
         /mozilla/i,
         /chrome/i,
         /safari/i,
         /firefox/i,
         /edge/i,
-        /opera/i
+        /opera/i,
+        /webkit/i,
+        /android/i,
+        /iphone/i,
+        /ipad/i,
+        /mobile/i
     ];
 
     const isSuspicious = suspiciousPatterns.some(pattern => pattern.test(userAgent));
     const isLegitimate = legitPatterns.some(pattern => pattern.test(userAgent));
 
+    console.log('User agent check:', {
+        userAgent: userAgent,
+        isSuspicious: isSuspicious,
+        isLegitimate: isLegitimate,
+        origin: requestOrigin
+    });
+
+    // Only block if suspicious AND not legitimate (be more lenient)
     if (isSuspicious && !isLegitimate) {
         console.warn(`Blocked suspicious user agent: ${userAgent} from ${requestOrigin}`);
         return res.status(403).json({ 
@@ -219,6 +264,8 @@ export const validateOrigin = (req, res, next) => {
 // Request fingerprinting for additional security
 export const requestFingerprinting = async (req, res, next) => {
     try {
+        await ensureRedisConnection();
+        
         const fingerprint = crypto.createHash('sha256')
             .update(req.ip + req.get('User-Agent') + req.get('Accept-Language'))
             .digest('hex');

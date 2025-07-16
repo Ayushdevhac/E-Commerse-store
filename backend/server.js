@@ -20,8 +20,8 @@ import addressRoutes from './routes/address.route.js';
 import adminRoutes from './routes/admin.route.js';
 import feedbackRoutes from './routes/feedback.route.js';
 import cookieParser from 'cookie-parser';
-import { connectDB } from './lib/db.js';
-import { connectRedis, disconnectRedis } from './lib/redis.js';
+import { connectDB, ensureDBConnection } from './lib/db.js';
+import { connectRedis, disconnectRedis, ensureRedisConnection } from './lib/redis.js';
 import { initStripe } from './lib/stripe.js';
 import { initializeSecurity, securityHealthCheck, manageIPBlacklist } from './lib/security.js';
 import path from 'path';
@@ -32,6 +32,7 @@ import { apiRateLimit, authRateLimit, adminRateLimit } from './middleware/rateLi
 import { validateOrigin, requestFingerprinting } from './middleware/security.middleware.js';
 import { sanitizeInput } from './middleware/validation.middleware.js';
 import { intrusionDetection, securityLogger, SECURITY_EVENTS } from './middleware/logging.middleware.js';
+import { dbConnectionMiddleware } from './middleware/db.middleware.js';
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -143,20 +144,49 @@ app.use('/api/admin', adminRateLimit);
 app.use(cors({
     origin: function (origin, callback) {
         // Allow requests with no origin (mobile apps, etc.)
-        if (!origin) return callback(null, true);
-        
-        const allowedOrigins = [
+        if (!origin) return callback(null, true);        const allowedOrigins = [
             'http://localhost:5173',
             'http://localhost:5174',
             'http://localhost:3000',
             process.env.CLIENT_URL,  // Production URL from env
             process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null, // Vercel URL
+            'https://e-commerse-store-dusky.vercel.app', // Deployed Vercel domain
         ].filter(Boolean);
+          console.log('CORS: Checking origin:', origin);
+        console.log('CORS: Allowed origins:', allowedOrigins);
+        console.log('CORS: NODE_ENV:', process.env.NODE_ENV);
+        console.log('CORS: CLIENT_URL:', process.env.CLIENT_URL);
+        console.log('CORS: VERCEL_URL:', process.env.VERCEL_URL);
         
-        if (allowedOrigins.includes(origin)) {
+        // Check if origin is in allowed list
+        let isAllowed = allowedOrigins.includes(origin);        // Also allow any Vercel preview/deployment URLs for this project
+        if (!isAllowed && origin) {            // ULTRA-PERMISSIVE: Accept ALL Vercel domains regardless of project name
+            const vercelPatterns = [
+                // Accept ANY .vercel.app domain
+                /^https:\/\/.*\.vercel\.app$/
+            ];
+            
+            console.log('CORS: Testing patterns against origin:', origin);
+            const isVercelDomain = vercelPatterns.some((pattern, index) => {
+                const matches = pattern.test(origin);
+                console.log(`CORS: Pattern ${index + 1} (${pattern}) matches:`, matches);
+                return matches;
+            });
+            
+            if (isVercelDomain) {
+                console.log('CORS: Allowing Vercel deployment domain:', origin);
+                isAllowed = true;
+            } else {
+                console.log('CORS: No Vercel patterns matched for origin:', origin);
+            }
+        }
+        
+        if (isAllowed) {
+            console.log('CORS: Origin allowed');
             callback(null, true);
         } else {
             console.warn(`CORS: Blocked origin ${origin}`);
+            console.warn('Blocked request from unauthorized origin:', origin);
             callback(new Error('Not allowed by CORS'));
         }
     },
@@ -182,6 +212,9 @@ app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - IP: ${req.ip}`);
     next();
 });
+
+// Database connection middleware for all API routes
+app.use('/api', dbConnectionMiddleware);
 
 // API routes
 app.use("/api/auth", authRoutes);
@@ -272,8 +305,15 @@ process.on('SIGINT', async () => {
 // Initialize services
 const initializeServices = async () => {
     try {
-        await connectDB();
-        await connectRedis();
+        // In serverless, we don't need to wait for connection on startup
+        // Connection will be established on-demand
+        if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+            console.log('🚀 Serverless environment detected - skipping initial DB connection');
+            await connectRedis();
+        } else {
+            await connectDB();
+            await connectRedis();
+        }
         
         const securityInit = await initializeSecurity();
         if (securityInit.success) {
