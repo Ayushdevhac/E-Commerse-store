@@ -8,6 +8,7 @@ export const useCartStore = create((set, get) => ({
 	total: 0,
 	subtotal: 0,
 	isCouponApplied: false,
+	quantityUpdateTimers: new Map(),
 	getMyCoupon: async () => {
 		try {
 			console.log('🔍 Fetching user coupon...');
@@ -93,19 +94,79 @@ export const useCartStore = create((set, get) => ({
 		await axios.delete(`/cart`, { data: { productId } });
 		set((prevState) => ({ cart: prevState.cart.filter((item) => item._id !== productId) }));
 		get().calculateTotals();
+	},	updateQuantityOptimistic: (productId, newQuantity) => {
+		// For instant UI updates with stock validation
+		set((prevState) => ({
+			cart: prevState.cart.map((item) => {
+				if (item.cartId === productId || item._id === productId) {
+					// Check stock limits if available
+					let finalQuantity = newQuantity;
+					if (item.selectedSize && item.stock && item.stock[item.selectedSize]) {
+						const maxStock = item.stock[item.selectedSize];
+						finalQuantity = Math.min(newQuantity, maxStock);
+						finalQuantity = Math.max(finalQuantity, 1); // Minimum 1
+					} else if (finalQuantity < 1) {
+						finalQuantity = 1;
+					}
+					
+					return { ...item, quantity: finalQuantity };
+				}
+				return item;
+			}),
+		}));
+		get().calculateTotals();
+		
+		// Get the actual final quantity after stock validation
+		const updatedItem = get().cart.find(item => 
+			item.cartId === productId || item._id === productId
+		);
+		
+		if (updatedItem) {
+			get().updateQuantity(productId, updatedItem.quantity);
+		}
 	},
+
 	updateQuantity: async (productId, quantity) => {
 		if (quantity === 0) {
 			get().removeFromCart(productId);
 			return;
 		}
 
-		await axios.put(`/cart/${productId}`, { quantity });
+		// Immediately update the UI for instant feedback
 		set((prevState) => ({
-			cart: prevState.cart.map((item) => (item._id === productId ? { ...item, quantity } : item)),
+			cart: prevState.cart.map((item) => {
+				if (item.cartId === productId || item._id === productId) {
+					return { ...item, quantity };
+				}
+				return item;
+			}),
 		}));
 		get().calculateTotals();
-	},	calculateTotals: () => {
+
+		// Clear any existing timer for this product
+		const timers = get().quantityUpdateTimers;
+		if (timers.has(productId)) {
+			clearTimeout(timers.get(productId));
+		}
+
+		// Set a new timer to debounce the API call
+		const timer = setTimeout(async () => {
+			try {
+				await axios.put(`/cart/${productId}`, { quantity });
+				timers.delete(productId);
+			} catch (error) {
+				// If API call fails, revert the UI change
+				console.error('Failed to update quantity on server:', error);
+				showToast.error('Failed to update quantity');
+				
+				// Refresh cart from server to get accurate state
+				get().getCartItems();
+			}
+		}, 500); // 500ms debounce
+
+		timers.set(productId, timer);
+		set({ quantityUpdateTimers: timers });
+	},calculateTotals: () => {
 		const { cart, coupon, isCouponApplied } = get();
 		const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 		let total = subtotal;

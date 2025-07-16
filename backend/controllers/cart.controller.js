@@ -95,7 +95,7 @@ export const addToCart = async (req, res) => {
 
 export const removeAllFromCart = async (req, res) => {
     try {
-        const { productId } = req.body;
+        const { productId } = req.body; // This could be productId or cartId (productId-size)
         const user = req.user;
 
         if (!productId) {
@@ -103,9 +103,25 @@ export const removeAllFromCart = async (req, res) => {
             user.cartItems = [];
         } else {
             // Remove specific product from cart
-            const itemIndex = user.cartItems.findIndex(item => 
-                item.product && item.product.toString() === productId
-            );
+            let itemIndex = -1;
+            
+            // Check if productId contains size information (format: productId-size)
+            if (productId.includes('-')) {
+                const [pid, size] = productId.split('-');
+                itemIndex = user.cartItems.findIndex(item => 
+                    item.product && 
+                    item.product.toString() === pid && 
+                    item.size === size
+                );
+            } else {
+                // Regular product without size
+                itemIndex = user.cartItems.findIndex(item => 
+                    item.product && 
+                    item.product.toString() === productId &&
+                    !item.size
+                );
+            }
+            
             if (itemIndex === -1) {
                 return res.status(404).json({ message: 'Product not found in cart' });
             }
@@ -121,20 +137,37 @@ export const removeAllFromCart = async (req, res) => {
 }
 export const updateQuantity = async (req, res) => {
     try {
-        const { id: productId } = req.params;
+        const { id: cartId } = req.params; // This could be productId or productId-size
         const { quantity } = req.body;
         const user = req.user;
         
-        const existingItem = user.cartItems.find(item => 
-            item.product && item.product.toString() === productId
-        );
+        // Clean up any invalid cart items first
+        user.cartItems = cleanupCartItems(user.cartItems);
+        
+        let existingItem;
+        
+        // Check if cartId contains size information (format: productId-size)
+        if (cartId.includes('-')) {
+            const [productId, size] = cartId.split('-');
+            existingItem = user.cartItems.find(item => 
+                item.product && 
+                item.product.toString() === productId && 
+                item.size === size
+            );
+        } else {
+            // Regular product without size
+            existingItem = user.cartItems.find(item => 
+                item.product && 
+                item.product.toString() === cartId &&
+                !item.size
+            );
+        }
         
         if (existingItem) {
             if (quantity <= 0) {
-                // If quantity is 0 or less, remove the item from the cart
-                user.cartItems = user.cartItems.filter(item => 
-                    !item.product || item.product.toString() !== productId
-                );
+                // Remove the item from the cart
+                const itemIndex = user.cartItems.indexOf(existingItem);
+                user.cartItems.splice(itemIndex, 1);
             } else {
                 // Update the quantity of the existing item
                 existingItem.quantity = quantity;

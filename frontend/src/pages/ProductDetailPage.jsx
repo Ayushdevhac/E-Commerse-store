@@ -22,8 +22,7 @@ const ProductDetailPage = () => {
 	const [selectedImage, setSelectedImage] = useState(0);
 	const [quantity, setQuantity] = useState(1);
 	const [selectedSize, setSelectedSize] = useState(null);
-	const [activeTab, setActiveTab] = useState("description");	useEffect(() => {
-		const fetchProduct = async () => {
+	const [activeTab, setActiveTab] = useState("description");	useEffect(() => {		const fetchProduct = async () => {
 			try {
 				setLoading(true);
 				const response = await axios.get(`/products/${id}`);
@@ -32,6 +31,8 @@ const ProductDetailPage = () => {
 				if (response.data.sizes && response.data.sizes.length > 0) {
 					setSelectedSize(response.data.sizes[0]);
 				}
+				// Reset quantity to 1 when loading a new product
+				setQuantity(1);
 			} catch (error) {
 				console.error("Error fetching product:", error);
 				showToast.error("Failed to load product");
@@ -62,6 +63,18 @@ const ProductDetailPage = () => {
 			return;
 		}
 		
+		// Check stock availability
+		const availableStock = getAvailableStock();
+		if (availableStock === 0) {
+			showToast.error(`This item is out of stock${selectedSize ? ` in size ${selectedSize}` : ''}`);
+			return;
+		}
+		
+		if (quantity > availableStock) {
+			showToast.error(`Only ${availableStock} items available in stock${selectedSize ? ` for size ${selectedSize}` : ''}`);
+			return;
+		}
+		
 		// Create product with selected size for cart
 		const productForCart = product.sizes && product.sizes.length > 0 
 			? { ...product, selectedSize }
@@ -72,13 +85,42 @@ const ProductDetailPage = () => {
 		}
 		showToast.success(`Added ${quantity} item(s) to cart${selectedSize ? ` (Size: ${selectedSize})` : ''}`);
 	};
-
 	const handleQuantityChange = (change) => {
 		const newQuantity = quantity + change;
-		if (newQuantity >= 1 && newQuantity <= 10) {
-			setQuantity(newQuantity);
+		
+		// Get current stock for selected size or general stock
+		let maxStock = 10; // Default max if no stock info
+		if (product.stock) {
+			if (product.sizes && product.sizes.length > 0 && selectedSize) {
+				// For products with sizes, get stock for selected size
+				maxStock = product.stock.get ? product.stock.get(selectedSize) : product.stock[selectedSize];
+			} else if (!product.sizes || product.sizes.length === 0) {
+				// For products without sizes, use general stock
+				maxStock = product.stock;
+			}
 		}
-	};	const toggleWishlist = async () => {
+		
+		// Ensure maxStock is a valid number
+		maxStock = Math.max(0, parseInt(maxStock) || 0);
+		
+		if (newQuantity >= 1 && newQuantity <= maxStock) {
+			setQuantity(newQuantity);
+		} else if (newQuantity > maxStock) {
+			showToast.error(`Only ${maxStock} items available in stock${selectedSize ? ` for size ${selectedSize}` : ''}`);
+		}
+	};
+
+	// Get available stock for current selection
+	const getAvailableStock = () => {
+		if (!product.stock) return 0;
+		
+		if (product.sizes && product.sizes.length > 0 && selectedSize) {
+			return product.stock.get ? product.stock.get(selectedSize) : product.stock[selectedSize];
+		} else if (!product.sizes || product.sizes.length === 0) {
+			return product.stock;
+		}
+		return 0;
+	};const toggleWishlist = async () => {
 		if (!user) {
 			showToast.error("Please login to add to wishlist");
 			return;
@@ -178,30 +220,50 @@ const ProductDetailPage = () => {
 									<span className="ml-2 text-gray-300">(4.0) • 156 reviews</span>
 								</div>
 							</div>							<p className="text-6xl font-bold text-emerald-400 mb-6">${product.price}</p>
-						</div>
-
-						{/* Size Selector */}
+						</div>						{/* Size Selector */}
 						{product.sizes && product.sizes.length > 0 && (
 							<div className="space-y-3">
 								<h3 className="text-lg font-medium text-white">Size:</h3>
 								<div className="flex flex-wrap gap-3">
-									{product.sizes.map((size) => (
-										<button
-											key={size}
-											onClick={() => setSelectedSize(size)}
-											className={`px-4 py-2 rounded-lg border-2 font-medium transition-all ${
-												selectedSize === size
-													? 'border-emerald-500 bg-emerald-500 text-white'
-													: 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500 hover:bg-gray-700'
-											}`}
-										>
-											{size}
-										</button>
-									))}
+									{product.sizes.map((size) => {
+										const sizeStock = product.stock && (product.stock.get ? product.stock.get(size) : product.stock[size]);
+										const isOutOfStock = !sizeStock || sizeStock === 0;
+										
+										return (
+											<button
+												key={size}
+												onClick={() => {
+													setSelectedSize(size);
+													// Reset quantity to 1 when changing size to avoid invalid quantities
+													setQuantity(1);
+												}}
+												disabled={isOutOfStock}
+												className={`px-4 py-2 rounded-lg border-2 font-medium transition-all relative ${
+													selectedSize === size
+														? 'border-emerald-500 bg-emerald-500 text-white'
+														: isOutOfStock
+														? 'border-gray-600 bg-gray-900 text-gray-500 cursor-not-allowed'
+														: 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500 hover:bg-gray-700'
+												}`}
+											>
+												{size}
+												{isOutOfStock && (
+													<span className="absolute inset-0 flex items-center justify-center">
+														<span className="bg-red-600 text-white text-xs px-1 rounded transform rotate-12">
+															OUT
+														</span>
+													</span>
+												)}
+											</button>
+										);
+									})}
 								</div>
 								{selectedSize && (
 									<p className="text-sm text-gray-400">
 										Selected size: <span className="text-emerald-400 font-medium">{selectedSize}</span>
+										{getAvailableStock() > 0 && (
+											<span className="ml-2 text-gray-500">({getAvailableStock()} available)</span>
+										)}
 									</p>
 								)}
 							</div>
@@ -233,37 +295,50 @@ const ProductDetailPage = () => {
 									</div>
 								)}
 							</div>
-						)}
-
-						{/* Quantity Selector */}
-						<div className="flex items-center space-x-4">
-							<span className="text-lg font-medium">Quantity:</span>
+						)}						{/* Quantity Selector */}
+						<div className="space-y-3">
+							<div className="flex items-center justify-between">
+								<span className="text-lg font-medium">Quantity:</span>
+								<span className="text-sm text-gray-400">
+									{getAvailableStock() > 0 ? `${getAvailableStock()} available` : 'Out of stock'}
+								</span>
+							</div>
 							<div className="flex items-center bg-gray-800 rounded-lg">
 								<button
 									onClick={() => handleQuantityChange(-1)}
-									className="p-2 hover:bg-gray-700 rounded-l-lg transition-colors"
+									disabled={quantity <= 1}
+									className="p-2 hover:bg-gray-700 rounded-l-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 								>
 									<Minus className="w-4 h-4" />
 								</button>
-								<span className="px-4 py-2 font-medium">{quantity}</span>
+								<span className="px-4 py-2 font-medium min-w-[3rem] text-center">{quantity}</span>
 								<button
 									onClick={() => handleQuantityChange(1)}
-									className="p-2 hover:bg-gray-700 rounded-r-lg transition-colors"
+									disabled={quantity >= getAvailableStock() || getAvailableStock() === 0}
+									className="p-2 hover:bg-gray-700 rounded-r-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 								>
 									<Plus className="w-4 h-4" />
 								</button>
-							</div>
-						</div>
-
-						{/* Action Buttons */}
+							</div>							{quantity === getAvailableStock() && getAvailableStock() > 0 && (
+								<p className="text-sm text-yellow-400">
+									Maximum quantity reached
+								</p>
+							)}
+							{getAvailableStock() > 0 && getAvailableStock() <= 5 && (
+								<p className="text-sm text-orange-400">
+									⚠️ Only {getAvailableStock()} left in stock!
+								</p>
+							)}
+						</div>						{/* Action Buttons */}
 						<div className="flex space-x-4">
 							<button
 								onClick={handleAddToCart}
-								className="flex-1 bg-emerald-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center justify-center"
+								disabled={getAvailableStock() === 0 || (product.sizes && product.sizes.length > 0 && !selectedSize)}
+								className="flex-1 bg-emerald-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center justify-center disabled:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
 							>
 								<ShoppingCart className="w-5 h-5 mr-2" />
-								Add to Cart
-							</button>							<button
+								{getAvailableStock() === 0 ? 'Out of Stock' : 'Add to Cart'}
+							</button><button
 								onClick={toggleWishlist}
 								className={`p-3 rounded-lg border transition-colors ${
 									product && isInWishlist(product._id)
