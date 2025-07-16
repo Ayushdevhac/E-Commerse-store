@@ -21,12 +21,17 @@ const ProductDetailPage = () => {
 	const [loading, setLoading] = useState(true);
 	const [selectedImage, setSelectedImage] = useState(0);
 	const [quantity, setQuantity] = useState(1);
+	const [selectedSize, setSelectedSize] = useState(null);
 	const [activeTab, setActiveTab] = useState("description");	useEffect(() => {
 		const fetchProduct = async () => {
 			try {
 				setLoading(true);
 				const response = await axios.get(`/products/${id}`);
 				setProduct(response.data);
+				// Set default size if product has sizes
+				if (response.data.sizes && response.data.sizes.length > 0) {
+					setSelectedSize(response.data.sizes[0]);
+				}
 			} catch (error) {
 				console.error("Error fetching product:", error);
 				showToast.error("Failed to load product");
@@ -45,17 +50,27 @@ const ProductDetailPage = () => {
 		if (user) {
 			getWishlist();
 		}
-	}, [user, getWishlist]);
-	const handleAddToCart = () => {
+	}, [user, getWishlist]);	const handleAddToCart = () => {
 		if (!user) {
 			showToast.error("Please login to add products to cart");
 			return;
 		}
 		
-		for (let i = 0; i < quantity; i++) {
-			addToCart(product);
+		// Check if product has sizes and no size is selected
+		if (product.sizes && product.sizes.length > 0 && !selectedSize) {
+			showToast.error("Please select a size");
+			return;
 		}
-		showToast.success(`Added ${quantity} item(s) to cart`);
+		
+		// Create product with selected size for cart
+		const productForCart = product.sizes && product.sizes.length > 0 
+			? { ...product, selectedSize }
+			: product;
+		
+		for (let i = 0; i < quantity; i++) {
+			addToCart(productForCart);
+		}
+		showToast.success(`Added ${quantity} item(s) to cart${selectedSize ? ` (Size: ${selectedSize})` : ''}`);
 	};
 
 	const handleQuantityChange = (change) => {
@@ -162,9 +177,63 @@ const ProductDetailPage = () => {
 									))}
 									<span className="ml-2 text-gray-300">(4.0) • 156 reviews</span>
 								</div>
-							</div>
-							<p className="text-6xl font-bold text-emerald-400 mb-6">${product.price}</p>
+							</div>							<p className="text-6xl font-bold text-emerald-400 mb-6">${product.price}</p>
 						</div>
+
+						{/* Size Selector */}
+						{product.sizes && product.sizes.length > 0 && (
+							<div className="space-y-3">
+								<h3 className="text-lg font-medium text-white">Size:</h3>
+								<div className="flex flex-wrap gap-3">
+									{product.sizes.map((size) => (
+										<button
+											key={size}
+											onClick={() => setSelectedSize(size)}
+											className={`px-4 py-2 rounded-lg border-2 font-medium transition-all ${
+												selectedSize === size
+													? 'border-emerald-500 bg-emerald-500 text-white'
+													: 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500 hover:bg-gray-700'
+											}`}
+										>
+											{size}
+										</button>
+									))}
+								</div>
+								{selectedSize && (
+									<p className="text-sm text-gray-400">
+										Selected size: <span className="text-emerald-400 font-medium">{selectedSize}</span>
+									</p>
+								)}
+							</div>
+						)}
+
+						{/* Stock Information */}
+						{product.stock && (
+							<div className="bg-gray-800 rounded-lg p-4">
+								<h4 className="font-medium text-white mb-2">Stock Information:</h4>
+								{product.sizes && product.sizes.length > 0 ? (
+									<div className="grid grid-cols-3 gap-2 text-sm">
+										{product.sizes.map((size) => {
+											const stock = product.stock.get ? product.stock.get(size) : product.stock[size];
+											return (
+												<div key={size} className="flex justify-between">
+													<span className="text-gray-300">{size}:</span>
+													<span className={stock > 5 ? 'text-green-400' : stock > 0 ? 'text-yellow-400' : 'text-red-400'}>
+														{stock || 0}
+													</span>
+												</div>
+											);
+										})}
+									</div>
+								) : (
+									<div className="text-sm">
+										<span className={`${product.stock > 10 ? 'text-green-400' : product.stock > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+											{product.stock > 0 ? `${product.stock} in stock` : 'Out of stock'}
+										</span>
+									</div>
+								)}
+							</div>
+						)}
 
 						{/* Quantity Selector */}
 						<div className="flex items-center space-x-4">
