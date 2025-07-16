@@ -365,10 +365,6 @@ npm run test:coverage
 - Update documentation as needed
 - Ensure all tests pass before submitting PR
 
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## 📞 Support
 
 - **Issues**: [GitHub Issues](https://github.com/yourusername/e-commerce-store/issues)
