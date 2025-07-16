@@ -26,10 +26,42 @@ const FeaturedProducts = ({ featuredProducts = [] }) => {
 			else setItemsPerPage(4);
 		};
 
-		handleResize();
-		window.addEventListener("resize", handleResize);
+		handleResize();		window.addEventListener("resize", handleResize);
 		return () => window.removeEventListener("resize", handleResize);
-	}, []);	// Auto-play functionality with progress
+	}, []);
+
+	// Navigation functions - MUST be defined before useEffect that uses them
+	const nextSlide = useCallback(() => {
+		if (!featuredProducts || featuredProducts.length === 0) return;
+		
+		setCurrentIndex((prevIndex) => {
+			const nextIndex = prevIndex + itemsPerPage;
+			// If we've reached or passed the end, go back to the beginning
+			if (nextIndex >= featuredProducts.length) {
+				return 0;
+			}
+			return nextIndex;
+		});
+		// Restart auto-play after manual navigation
+		setIsAutoPlaying(true);
+	}, [itemsPerPage, featuredProducts.length]);
+	const prevSlide = useCallback(() => {
+		if (!featuredProducts || featuredProducts.length === 0) return;
+		
+		setCurrentIndex((prevIndex) => {
+			const prevIdx = prevIndex - itemsPerPage;
+			// If we've gone past the beginning, go to the last page
+			if (prevIdx < 0) {
+				const lastPageStart = Math.floor((featuredProducts.length - 1) / itemsPerPage) * itemsPerPage;
+				return lastPageStart;
+			}
+			return prevIdx;
+		});
+		// Restart auto-play after manual navigation
+		setIsAutoPlaying(true);
+	}, [itemsPerPage, featuredProducts.length]);
+
+	// Auto-play functionality with progress
 	useEffect(() => {
 		if (!isAutoPlaying || !featuredProducts || featuredProducts.length <= itemsPerPage) {
 			setProgress(0);
@@ -63,8 +95,7 @@ const FeaturedProducts = ({ featuredProducts = [] }) => {
 	};
 
 	const handleCarouselMouseLeave = () => {
-		setIsAutoPlaying(true);
-	};
+		setIsAutoPlaying(true);	};
 
 	// Keyboard navigation
 	useEffect(() => {
@@ -81,35 +112,8 @@ const FeaturedProducts = ({ featuredProducts = [] }) => {
 
 		window.addEventListener('keydown', handleKeyDown);
 		return () => window.removeEventListener('keydown', handleKeyDown);
-	}, [prevSlide, nextSlide, isAutoPlaying]);	const nextSlide = useCallback(() => {
-		if (!featuredProducts || featuredProducts.length === 0) return;
-		
-		setCurrentIndex((prevIndex) => {
-			const nextIndex = prevIndex + itemsPerPage;
-			// If we've reached or passed the end, go back to the beginning
-			if (nextIndex >= featuredProducts.length) {
-				return 0;
-			}
-			return nextIndex;
-		});
-		// Restart auto-play after manual navigation
-		setIsAutoPlaying(true);
-	}, [itemsPerPage, featuredProducts.length]);
+	}, [prevSlide, nextSlide, isAutoPlaying]);
 
-	const prevSlide = useCallback(() => {
-		if (!featuredProducts || featuredProducts.length === 0) return;
-		
-		setCurrentIndex((prevIndex) => {
-			// If we're at the beginning, go to the last complete page
-			if (prevIndex <= 0) {
-				const lastPageStart = Math.floor((featuredProducts.length - 1) / itemsPerPage) * itemsPerPage;
-				return lastPageStart;
-			}
-			return prevIndex - itemsPerPage;
-		});
-		// Restart auto-play after manual navigation
-		setIsAutoPlaying(true);
-	}, [itemsPerPage, featuredProducts.length]);
 	const handleAddToCart = (e, product) => {
 		e.stopPropagation();
 		if (!user) {

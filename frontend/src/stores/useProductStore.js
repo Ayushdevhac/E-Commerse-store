@@ -198,32 +198,82 @@ export const useProductStore = create((set, get) => ({
 			showToast.error(error.response?.data?.message || "Failed to update product");
 		}
 	},
-
 	fetchFeaturedProducts: async () => {
-		set({ loading: true });
+		set({ loading: true, error: null });
 		try {
 			const response = await axios.get("/products/featured");
 			set({ 
-				products: response.data, 
+				products: response.data || [], 
 				loading: false, 
 				productType: 'featured',
+				error: null,
 				// Reset pagination for featured products since they're not paginated
 				pagination: {
 					currentPage: 1,
 					totalPages: 1,
-					totalProducts: response.data.length,
-					limit: response.data.length,
+					totalProducts: (response.data || []).length,
+					limit: (response.data || []).length,
 					hasNextPage: false,
 					hasPrevPage: false
 				}
-			});		} catch (error) {
+			});
+		} catch (error) {
+			console.error("Error fetching featured products:", error);
+			
 			if (error.response?.status === 404) {
 				// No featured products found - this is normal, not an error
-				set({ products: [], loading: false, error: null, productType: 'featured' });
+				set({ 
+					products: [], 
+					loading: false, 
+					error: null, 
+					productType: 'featured',
+					pagination: {
+						currentPage: 1,
+						totalPages: 1,
+						totalProducts: 0,
+						limit: 0,
+						hasNextPage: false,
+						hasPrevPage: false
+					}
+				});
 				console.info("No featured products available at this time");
+			} else if (error.code === 'ECONNABORTED' || error.message === 'Network Error') {
+				// Network error - set empty state but don't show error toast
+				set({ 
+					products: [], 
+					loading: false, 
+					error: "Unable to connect to server", 
+					productType: 'featured',
+					pagination: {
+						currentPage: 1,
+						totalPages: 1,
+						totalProducts: 0,
+						limit: 0,
+						hasNextPage: false,
+						hasPrevPage: false
+					}
+				});
+				console.warn("Network error when fetching featured products - displaying empty state");
 			} else {
-				set({ error: "Failed to fetch featured products", loading: false });
-				console.error("Error fetching featured products:", error);
+				// Other errors
+				set({ 
+					products: [], 
+					loading: false, 
+					error: "Failed to fetch featured products", 
+					productType: 'featured',
+					pagination: {
+						currentPage: 1,
+						totalPages: 1,
+						totalProducts: 0,
+						limit: 0,
+						hasNextPage: false,
+						hasPrevPage: false
+					}
+				});
+				// Only show toast for unexpected errors
+				if (error.response?.status !== 503) { // Don't show toast for service unavailable
+					showToast.error(error.response?.data?.message || "Failed to fetch featured products");
+				}
 			}
 		}
 	},
