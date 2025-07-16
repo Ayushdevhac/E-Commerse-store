@@ -53,6 +53,35 @@ export const showToast = {
     setTimeout(() => {
       activeToasts.delete(toastId);
     }, DEBOUNCE_TIME);
+      return toastInstance;
+  },
+  
+  warning: (message, options = {}) => {
+    const toastId = `warning-${message}`;
+    
+    if (activeToasts.has(toastId)) {
+      return;
+    }
+    
+    activeToasts.add(toastId);
+    
+    const finalOptions = {
+      id: toastId,
+      duration: 3500,
+      icon: '⚠️',
+      style: {
+        background: '#f59e0b',
+        color: '#fff',
+      },
+      ...options,
+    };
+    
+    const toastInstance = toast(message, finalOptions);
+    
+    // Remove from active toasts after debounce time
+    setTimeout(() => {
+      activeToasts.delete(toastId);
+    }, DEBOUNCE_TIME);
     
     return toastInstance;
   },

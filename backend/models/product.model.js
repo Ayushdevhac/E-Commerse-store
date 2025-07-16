@@ -37,22 +37,27 @@ sizes: {
     }
 },
 stock: {
-    type: Map,
-    of: Number,
-    default: new Map(),
+    type: mongoose.Schema.Types.Mixed, // Allow both Map and Number
+    default: function() {
+        return this.sizes && this.sizes.length > 0 ? new Map() : 0;
+    },
     validate: {
         validator: function(stock) {
-            // If no sizes specified, allow simple stock number
-            if (!this.sizes || this.sizes.length === 0) return true;
-            // If sizes specified, validate stock for each size
+            // If no sizes specified, stock should be a number
+            if (!this.sizes || this.sizes.length === 0) {
+                return typeof stock === 'number' && stock >= 0;
+            }
+            // If sizes specified, stock should be a Map with entries for each size
+            if (!stock || typeof stock.get !== 'function') return false;
             for (let size of this.sizes) {
-                if (!stock.has(size) || stock.get(size) < 0) {
+                const sizeStock = stock.get(size);
+                if (sizeStock === undefined || sizeStock < 0) {
                     return false;
                 }
             }
             return true;
         },
-        message: 'Stock must be specified for all available sizes and be non-negative'
+        message: 'Stock must be a positive number for products without sizes, or a map with positive values for each size'
     }
 },
 isFeatured: {

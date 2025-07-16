@@ -1,5 +1,9 @@
 import crypto from 'crypto';
 import { client, ensureRedisConnection } from '../lib/redis.js';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
 
 // Generate API key for client applications
 export const generateAPIKey = () => {
@@ -179,15 +183,16 @@ export const validateOrigin = (req, res, next) => {
 
     // Allow Vercel domains immediately
     if (isVercelDomain) return next();
+ 
     
     // Also check if this is the main production domain from CLIENT_URL
-    if (origin && process.env.CLIENT_URL && origin === process.env.CLIENT_URL) {
-        console.log('✅ Security middleware: Allowing CLIENT_URL domain:', origin);
+    if (hostOrigin && process.env.CLIENT_URL && hostOrigin === process.env.CLIENT_URL) {
+        console.log('✅ Security middleware: Allowing CLIENT_URL domain:', hostOrigin);
         return next();
     }
 
     // Allow requests without origin for mobile apps, but require API key
-    if (!origin) {
+    if (!rawOrigin) {
         // For authenticated routes without origin, still require API key
         return validateAPIKey(req, res, next);
     }
@@ -195,13 +200,21 @@ export const validateOrigin = (req, res, next) => {
     // Extract domain from origin/referer
     let requestOrigin;
     try {
-        requestOrigin = new URL(origin).origin;
+        requestOrigin = new URL(rawOrigin).origin;
     } catch (error) {
         return res.status(403).json({ 
             message: 'Invalid request origin',
             code: 'INVALID_ORIGIN'
         });
     }    // Check if origin is allowed
+    const allowedOrigins = [
+        process.env.CLIENT_URL,
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:5173'
+    ].filter(Boolean);
+    
     const isAllowedOrigin = allowedOrigins.includes(requestOrigin) || isVercelDomain;
     
     if (!isAllowedOrigin) {
@@ -213,9 +226,8 @@ export const validateOrigin = (req, res, next) => {
     }    // For authenticated routes from trusted origins, skip API key requirement
     if (isAuthRoute && (allowedOrigins.includes(requestOrigin) || isVercelDomain)) {
         return next();
-    }
-
-    // Additional security: Check for suspicious user agents
+    }    // Additional security: Check for suspicious user agents
+    const userAgent = req.get('User-Agent') || '';
     const suspiciousPatterns = [
         /bot/i,
         /crawler/i,
@@ -224,7 +236,7 @@ export const validateOrigin = (req, res, next) => {
         /curl/i,
         /wget/i,
         /postman/i
-    ];    // Allow legitimate browsers and mobile apps
+    ];// Allow legitimate browsers and mobile apps
     const legitPatterns = [
         /mozilla/i,
         /chrome/i,

@@ -6,6 +6,7 @@ import { useProductStore } from "../stores/useProductStore";
 import { useCartStore } from "../stores/useCartStore";
 import { useUserStore } from "../stores/useUserStore";
 import { useWishlistStore } from "../stores/useWishlistStore";
+import { validateQuantity, getAvailableStock } from "../lib/stockValidation";
 import PeopleAlsoBought from "../components/PeopleAlsoBought";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ReviewList from "../components/ReviewList";
@@ -56,52 +57,34 @@ const ProductDetailPage = () => {
 			showToast.error("Please login to add products to cart");
 			return;
 		}
-		
-		// Check if product has sizes and no size is selected
+				// Check if product has sizes and no size is selected
 		if (product.sizes && product.sizes.length > 0 && !selectedSize) {
 			showToast.error("Please select a size");
 			return;
 		}
 		
-		// Check stock availability
-		const availableStock = getAvailableStock();
-		if (availableStock === 0) {
-			showToast.error(`This item is out of stock${selectedSize ? ` in size ${selectedSize}` : ''}`);
-			return;
-		}
-		
-		if (quantity > availableStock) {
-			showToast.error(`Only ${availableStock} items available in stock${selectedSize ? ` for size ${selectedSize}` : ''}`);
-			return;
-		}
-		
-		// Create product with selected size for cart
+		// Create product with selected size for validation and cart
 		const productForCart = product.sizes && product.sizes.length > 0 
 			? { ...product, selectedSize }
 			: product;
 		
-		for (let i = 0; i < quantity; i++) {
-			addToCart(productForCart);
+		// Use shared validation utility
+		const validation = validateQuantity(productForCart, selectedSize, quantity);
+		if (!validation.isValid) {
+			showToast.error(validation.message);
+			return;
 		}
-		showToast.success(`Added ${quantity} item(s) to cart${selectedSize ? ` (Size: ${selectedSize})` : ''}`);
-	};
-	const handleQuantityChange = (change) => {
+		
+		// Use the updated addToCart with quantity parameter
+		addToCart(productForCart, quantity);
+	};	const handleQuantityChange = (change) => {
 		const newQuantity = quantity + change;
 		
-		// Get current stock for selected size or general stock
-		let maxStock = 10; // Default max if no stock info
-		if (product.stock) {
-			if (product.sizes && product.sizes.length > 0 && selectedSize) {
-				// For products with sizes, get stock for selected size
-				maxStock = product.stock.get ? product.stock.get(selectedSize) : product.stock[selectedSize];
-			} else if (!product.sizes || product.sizes.length === 0) {
-				// For products without sizes, use general stock
-				maxStock = product.stock;
-			}
-		}
-		
-		// Ensure maxStock is a valid number
-		maxStock = Math.max(0, parseInt(maxStock) || 0);
+		// Use shared utility to get available stock
+		const productForValidation = product.sizes && product.sizes.length > 0 
+			? { ...product, selectedSize }
+			: product;
+		const maxStock = getAvailableStock(productForValidation, selectedSize);
 		
 		if (newQuantity >= 1 && newQuantity <= maxStock) {
 			setQuantity(newQuantity);
@@ -110,17 +93,14 @@ const ProductDetailPage = () => {
 		}
 	};
 
-	// Get available stock for current selection
-	const getAvailableStock = () => {
-		if (!product.stock) return 0;
-		
-		if (product.sizes && product.sizes.length > 0 && selectedSize) {
-			return product.stock.get ? product.stock.get(selectedSize) : product.stock[selectedSize];
-		} else if (!product.sizes || product.sizes.length === 0) {
-			return product.stock;
-		}
-		return 0;
-	};const toggleWishlist = async () => {
+	// Get available stock for current selection using shared utility
+	const getCurrentAvailableStock = () => {
+		const productForValidation = product.sizes && product.sizes.length > 0 
+			? { ...product, selectedSize }
+			: product;		return getAvailableStock(productForValidation, selectedSize);
+	};
+
+	const toggleWishlist = async () => {
 		if (!user) {
 			showToast.error("Please login to add to wishlist");
 			return;

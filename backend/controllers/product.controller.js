@@ -223,18 +223,17 @@ export const createProducts = async (req, res) => {
         const priceNum = parseFloat(price);
         if (isNaN(priceNum) || priceNum <= 0) {
             return res.status(400).json({ message: 'Invalid price value' });
-        }
-
-        // Process sizes and stock
+        }        // Process sizes and stock        
         let processedSizes = [];
-        let processedStock = new Map();
+        let processedStock;
         
         if (sizes && sizes.length > 0) {
             // Validate and process sizes
             const validSizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '28', '30', '32', '34', '36', '38', '40', '42', '44', '46', '48', '50', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'];
             processedSizes = sizes.map(size => size.toString().toUpperCase()).filter(size => validSizes.includes(size));
             
-            // Process stock for each size
+            // Process stock for each size (Map for sized products)
+            processedStock = new Map();
             if (stock && typeof stock === 'object') {
                 for (let size of processedSizes) {
                     const stockValue = parseInt(stock[size]) || 0;
@@ -246,9 +245,9 @@ export const createProducts = async (req, res) => {
                     processedStock.set(size, 10); // Default stock of 10 per size
                 }
             }
-        } else if (stock && typeof stock === 'number') {
-            // Simple stock for products without sizes
-            processedStock.set('default', Math.max(0, parseInt(stock)));
+        } else {
+            // Simple stock for products without sizes (Number)
+            processedStock = stock && typeof stock === 'number' ? Math.max(0, parseInt(stock)) : 10;
         }
 
         let cloudinaryResponse;
@@ -279,13 +278,13 @@ export const createProducts = async (req, res) => {
             description: description.trim(),
             image: cloudinaryResponse.secure_url,
             category: category.toLowerCase().trim()
-        };
-
-        // Add sizes and stock if provided
+        };        // Add sizes and stock if provided
         if (processedSizes.length > 0) {
             productData.sizes = processedSizes;
             productData.stock = processedStock;
-        } else if (processedStock.has('default')) {
+        } else if (processedStock.has && processedStock.has('default')) {
+            productData.stock = processedStock;
+        } else {
             productData.stock = processedStock;
         }
 

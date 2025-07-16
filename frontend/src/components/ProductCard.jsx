@@ -9,7 +9,7 @@ const ProductCard = ({ product }) => {
 	const { user } = useUserStore();
 	const { addToCart } = useCartStore();
 	const { toggleWishlist: toggleWishlistAction, isInWishlist } = useWishlistStore();
-	const navigate = useNavigate();const handleAddToCart = (e) => {
+	const navigate = useNavigate();	const handleAddToCart = (e) => {
 		e.stopPropagation(); // Prevent navigation when clicking add to cart
 		if (!user) {
 			showToast.error("Please login to add products to cart", { id: "login" });
@@ -23,8 +23,14 @@ const ProductCard = ({ product }) => {
 			return;
 		}
 		
+		// Check stock for products without sizes
+		if (typeof product.stock === 'number' && product.stock <= 0) {
+			showToast.error("This item is out of stock");
+			return;
+		}
+		
 		// Add to cart for products without sizes
-		addToCart(product);
+		addToCart(product, 1);
 	};
 
 	const handleWishlistToggle = async (e) => {		e.stopPropagation(); // Prevent navigation when clicking wishlist

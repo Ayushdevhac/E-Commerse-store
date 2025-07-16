@@ -48,7 +48,9 @@ const CategoryPage = () => {	const {
 	useEffect(() => {
 		// Clear products when component mounts or category changes
 		clearProducts();
-	}, [category, clearProducts]);
+		// Reset page to 1 when category changes to ensure pagination starts at first page
+		setSearchParams({ page: '1' });
+	}, [category, clearProducts, setSearchParams]);
 
 	useEffect(() => {
 		fetchProducts();

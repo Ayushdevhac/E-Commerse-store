@@ -1,37 +1,29 @@
 import { Minus, Plus, Trash } from "lucide-react";
 import { useCartStore } from "../stores/useCartStore";
+import { validateQuantity, getAvailableStock } from "../lib/stockValidation";
+import showToast from "../lib/toast";
 
 const CartItem = ({ item }) => {
-	const { removeFromCart, updateQuantityOptimistic } = useCartStore();
-
-	const handleQuantityChange = (change) => {
+	const { removeFromCart, updateQuantityOptimistic } = useCartStore();	const handleQuantityChange = (change) => {
 		const newQuantity = item.quantity + change;
 		if (newQuantity <= 0) {
 			removeFromCart(item.cartId || item._id);
 			return;
 		}
 		
-		// Check stock limits for items with sizes
-		if (item.selectedSize && item.stock && item.stock[item.selectedSize]) {
-			const maxStock = item.stock[item.selectedSize];
-			if (newQuantity > maxStock && change > 0) {
-				// Don't update if trying to exceed stock
-				return;
-			}
+		// Validate the new quantity using shared utility
+		const validation = validateQuantity(item, item.selectedSize, newQuantity);
+		if (!validation.isValid && change > 0) {
+			// Don't update if trying to exceed stock (only show error when increasing)
+			showToast.error(validation.message);
+			return;
 		}
 		
 		updateQuantityOptimistic(item.cartId || item._id, newQuantity);
 	};
 
-	// Calculate available stock for display
-	const getAvailableStock = () => {
-		if (item.selectedSize && item.stock && item.stock[item.selectedSize]) {
-			return item.stock[item.selectedSize];
-		}
-		return null;
-	};
-
-	const availableStock = getAvailableStock();
+	// Use shared utility to get available stock
+	const availableStock = getAvailableStock(item, item.selectedSize);
 	const isAtMaxStock = availableStock && item.quantity >= availableStock;
 
 	return (

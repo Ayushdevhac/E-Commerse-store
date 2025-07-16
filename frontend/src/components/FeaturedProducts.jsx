@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { ShoppingCart, ChevronLeft, ChevronRight, Star, Heart, Eye } from "lucide-react";
 import { useCartStore } from "../stores/useCartStore";
 import { useWishlistStore } from "../stores/useWishlistStore";
@@ -11,17 +11,16 @@ const FeaturedProducts = ({ featuredProducts }) => {
 	// Early return if no featured products
 	if (!featuredProducts || featuredProducts.length === 0) {
 		return null;
-	}
-
-	const [currentIndex, setCurrentIndex] = useState(0);
+	}	const [currentIndex, setCurrentIndex] = useState(0);
 	const [itemsPerPage, setItemsPerPage] = useState(4);
 	const [hoveredProduct, setHoveredProduct] = useState(null);
+	const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+	const [progress, setProgress] = useState(0);
 
 	const { addToCart } = useCartStore();
 	const { user } = useUserStore();
 	const { toggleWishlist, isInWishlist } = useWishlistStore();
 	const navigate = useNavigate();
-
 	useEffect(() => {
 		const handleResize = () => {
 			if (window.innerWidth < 640) setItemsPerPage(1);
@@ -33,14 +32,83 @@ const FeaturedProducts = ({ featuredProducts }) => {
 		handleResize();
 		window.addEventListener("resize", handleResize);
 		return () => window.removeEventListener("resize", handleResize);
-	}, []);
-	const nextSlide = () => {
-		setCurrentIndex((prevIndex) => prevIndex + itemsPerPage);
+	}, []);	// Auto-play functionality with progress
+	useEffect(() => {
+		if (!isAutoPlaying || featuredProducts.length <= itemsPerPage) {
+			setProgress(0);
+			return;
+		}
+
+		const intervalDuration = 4000; // 4 seconds
+		const progressInterval = 50; // Update progress every 50ms
+		let elapsed = 0;
+
+		const progressTimer = setInterval(() => {
+			elapsed += progressInterval;
+			const newProgress = (elapsed / intervalDuration) * 100;
+			setProgress(newProgress);
+
+			if (elapsed >= intervalDuration) {
+				nextSlide();
+				elapsed = 0;
+				setProgress(0);
+			}
+		}, progressInterval);
+
+		return () => {
+			clearInterval(progressTimer);
+			setProgress(0);
+		};
+	}, [isAutoPlaying, featuredProducts.length, itemsPerPage, nextSlide, currentIndex]);
+	// Pause auto-play when user hovers over the carousel
+	const handleCarouselMouseEnter = () => {
+		setIsAutoPlaying(false);
 	};
 
-	const prevSlide = () => {
-		setCurrentIndex((prevIndex) => prevIndex - itemsPerPage);
+	const handleCarouselMouseLeave = () => {
+		setIsAutoPlaying(true);
 	};
+
+	// Keyboard navigation
+	useEffect(() => {
+		const handleKeyDown = (event) => {
+			if (event.key === 'ArrowLeft') {
+				prevSlide();
+			} else if (event.key === 'ArrowRight') {
+				nextSlide();
+			} else if (event.key === ' ') { // Spacebar to toggle auto-play
+				event.preventDefault();
+				setIsAutoPlaying(!isAutoPlaying);
+			}
+		};
+
+		window.addEventListener('keydown', handleKeyDown);
+		return () => window.removeEventListener('keydown', handleKeyDown);
+	}, [prevSlide, nextSlide, isAutoPlaying]);const nextSlide = useCallback(() => {
+		setCurrentIndex((prevIndex) => {
+			const nextIndex = prevIndex + itemsPerPage;
+			// If we've reached or passed the end, go back to the beginning
+			if (nextIndex >= featuredProducts.length) {
+				return 0;
+			}
+			return nextIndex;
+		});
+		// Restart auto-play after manual navigation
+		setIsAutoPlaying(true);
+	}, [itemsPerPage, featuredProducts.length]);
+
+	const prevSlide = useCallback(() => {
+		setCurrentIndex((prevIndex) => {
+			// If we're at the beginning, go to the last complete page
+			if (prevIndex <= 0) {
+				const lastPageStart = Math.floor((featuredProducts.length - 1) / itemsPerPage) * itemsPerPage;
+				return lastPageStart;
+			}
+			return prevIndex - itemsPerPage;
+		});
+		// Restart auto-play after manual navigation
+		setIsAutoPlaying(true);
+	}, [itemsPerPage, featuredProducts.length]);
 	const handleAddToCart = (e, product) => {
 		e.stopPropagation();
 		if (!user) {
@@ -62,9 +130,9 @@ const FeaturedProducts = ({ featuredProducts }) => {
 	const handleProductClick = (productId) => {
 		navigate(`/product/${productId}`);
 	};
-
-	const isStartDisabled = currentIndex === 0;
-	const isEndDisabled = currentIndex >= featuredProducts.length - itemsPerPage;
+	// With infinite looping, buttons are never disabled
+	const isStartDisabled = false;
+	const isEndDisabled = false;
 	return (
 		<div className='py-16 bg-gradient-to-b from-gray-900 to-gray-800'>
 			<div className='container mx-auto px-4'>
@@ -83,7 +151,7 @@ const FeaturedProducts = ({ featuredProducts }) => {
 					<div className='w-20 h-1 bg-gradient-to-r from-emerald-400 to-cyan-400 mx-auto mt-4 rounded-full'></div>
 				</motion.div>
 
-				<div className='relative'>
+				<div className='relative' onMouseEnter={handleCarouselMouseEnter} onMouseLeave={handleCarouselMouseLeave}>
 					<div className='overflow-hidden rounded-2xl'>
 						<motion.div
 							className='flex transition-transform duration-500 ease-out'
@@ -242,10 +310,12 @@ const FeaturedProducts = ({ featuredProducts }) => {
 
 					{/* Pagination dots */}
 					<div className='flex justify-center mt-8 gap-2'>
-						{Array.from({ length: Math.ceil(featuredProducts.length / itemsPerPage) }).map((_, index) => (
-							<motion.button
+						{Array.from({ length: Math.ceil(featuredProducts.length / itemsPerPage) }).map((_, index) => (							<motion.button
 								key={index}
-								onClick={() => setCurrentIndex(index * itemsPerPage)}
+								onClick={() => {
+									setCurrentIndex(index * itemsPerPage);
+									setIsAutoPlaying(true); // Restart auto-play after manual navigation
+								}}
 								className={`w-3 h-3 rounded-full transition-all duration-300 ${
 									Math.floor(currentIndex / itemsPerPage) === index
 										? "bg-emerald-500 scale-125"
@@ -253,8 +323,33 @@ const FeaturedProducts = ({ featuredProducts }) => {
 								}`}
 								whileHover={{ scale: 1.2 }}
 								whileTap={{ scale: 0.9 }}
-							/>
-						))}
+							/>						))}
+					</div>					{/* Auto-play toggle and progress */}
+					<div className='flex flex-col items-center mt-4 gap-2'>
+						{/* Progress bar */}
+						{isAutoPlaying && (
+							<div className='w-32 h-1 bg-gray-700 rounded-full overflow-hidden'>
+								<div 
+									className='h-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all duration-75 ease-linear'
+									style={{ width: `${progress}%` }}
+								/>
+							</div>
+						)}
+						
+						<button
+							onClick={() => setIsAutoPlaying(!isAutoPlaying)}
+							className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
+								isAutoPlaying
+									? "bg-emerald-600/20 text-emerald-400 border border-emerald-600/30"
+									: "bg-gray-600/20 text-gray-400 border border-gray-600/30"
+							}`}
+						>
+							{isAutoPlaying ? "⏸️ Pause Auto-Play" : "▶️ Start Auto-Play"}
+						</button>
+						
+						<p className='text-xs text-gray-500 mt-1'>
+							Use ← → arrow keys to navigate • Spacebar to toggle auto-play
+						</p>
 					</div>
 				</div>
 			</div>

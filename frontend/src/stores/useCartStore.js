@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import axios from "../lib/axios";
 import showToast from "../lib/toast";
+import { validateQuantity, getAvailableStock } from "../lib/stockValidation";
 
 export const useCartStore = create((set, get) => ({
 	cart: [],
@@ -50,11 +51,18 @@ export const useCartStore = create((set, get) => ({
 		}
 	},	clearCart: async () => {
 		set({ cart: [], coupon: null, total: 0, subtotal: 0 });
-	},
-		addToCart: async (product) => {
+	},	addToCart: async (product, quantity = 1) => {
 		try {
+			// Validate quantity and stock using utility function
+			const validation = validateQuantity(product, product.selectedSize, quantity);
+			if (!validation.isValid) {
+				showToast.error(validation.message);
+				return;
+			}
+
 			const productData = {
-				productId: product._id
+				productId: product._id,
+				quantity: quantity
 			};
 			
 			// Include size if product has sizes
@@ -62,51 +70,59 @@ export const useCartStore = create((set, get) => ({
 				productData.size = product.selectedSize;
 			}
 			
-			await axios.post("/cart", productData);
-			showToast.success("Product added to cart");
+			const response = await axios.post("/cart", productData);
+			showToast.success(`Added ${quantity} item(s) to cart${product.selectedSize ? ` (Size: ${product.selectedSize})` : ''}`);
 
-			set((prevState) => {
-				// For products with sizes, consider size in uniqueness check
-				const cartKey = product.selectedSize ? `${product._id}-${product.selectedSize}` : product._id;
-				const existingItem = prevState.cart.find((item) => {
-					const itemKey = item.selectedSize ? `${item._id}-${item.selectedSize}` : item._id;
-					return itemKey === cartKey;
-				});
-				
-				const newCart = existingItem
-					? prevState.cart.map((item) => {
-						const itemKey = item.selectedSize ? `${item._id}-${item.selectedSize}` : item._id;
-						return itemKey === cartKey ? { ...item, quantity: item.quantity + 1 } : item;
-					})
-					: [...prevState.cart, { 
-						...product, 
-						quantity: 1,
-						cartId: cartKey // Add unique cart ID for products with sizes
-					}];
-				return { cart: newCart };
-			});
-			get().calculateTotals();
+			// Refresh cart from server to get accurate state
+			get().getCartItems();
 		} catch (error) {
-			showToast.error(error.response.data.message || "An error occurred");
+			const errorMessage = error.response?.data?.message || "Failed to add item to cart";
+			showToast.error(errorMessage);
 		}
-	},
-	removeFromCart: async (productId) => {
-		await axios.delete(`/cart`, { data: { productId } });
-		set((prevState) => ({ cart: prevState.cart.filter((item) => item._id !== productId) }));
-		get().calculateTotals();
+	},removeFromCart: async (productId) => {
+		try {
+			// Optimistically remove from UI first
+			set((prevState) => ({
+				cart: prevState.cart.filter((item) => {
+					const itemKey = item.cartId || item._id;
+					return itemKey !== productId;
+				})
+			}));
+			get().calculateTotals();
+			
+			// Then sync with backend
+			await axios.delete(`/cart`, { data: { productId } });
+			showToast.success("Item removed from cart");
+		} catch (error) {
+			console.error('Error removing item from cart:', error);
+			
+			// If error occurs, refresh cart to get accurate state
+			get().getCartItems();
+			
+			// Only show error for non-404 errors (404 means item wasn't in cart anyway)
+			if (error.response?.status !== 404) {
+				showToast.error(error.response?.data?.message || "Failed to remove item from cart");
+			}
+		}
 	},	updateQuantityOptimistic: (productId, newQuantity) => {
 		// For instant UI updates with stock validation
 		set((prevState) => ({
 			cart: prevState.cart.map((item) => {
 				if (item.cartId === productId || item._id === productId) {
-					// Check stock limits if available
+					// Use shared validation utility
+					const validation = validateQuantity(item, item.selectedSize, newQuantity);
 					let finalQuantity = newQuantity;
-					if (item.selectedSize && item.stock && item.stock[item.selectedSize]) {
-						const maxStock = item.stock[item.selectedSize];
-						finalQuantity = Math.min(newQuantity, maxStock);
+					
+					if (!validation.isValid) {
+						// If validation fails, try to get the maximum available quantity
+						const availableStock = getAvailableStock(item, item.selectedSize);
+						finalQuantity = Math.min(newQuantity, availableStock);
 						finalQuantity = Math.max(finalQuantity, 1); // Minimum 1
-					} else if (finalQuantity < 1) {
-						finalQuantity = 1;
+						
+						// Show warning if we had to adjust the quantity
+						if (finalQuantity !== newQuantity) {
+							showToast.warning(`Adjusted quantity to ${finalQuantity} (max available: ${availableStock})`);
+						}
 					}
 					
 					return { ...item, quantity: finalQuantity };
@@ -124,19 +140,41 @@ export const useCartStore = create((set, get) => ({
 		if (updatedItem) {
 			get().updateQuantity(productId, updatedItem.quantity);
 		}
-	},
-
-	updateQuantity: async (productId, quantity) => {
+	},	updateQuantity: async (productId, quantity) => {
 		if (quantity === 0) {
 			get().removeFromCart(productId);
 			return;
+		}
+
+		// Find the item to validate against
+		const item = get().cart.find(item => 
+			item.cartId === productId || item._id === productId
+		);
+		
+		if (!item) {
+			showToast.error("Item not found in cart");
+			return;
+		}
+
+		// Validate quantity using shared utility
+		const validation = validateQuantity(item, item.selectedSize, quantity);
+		let finalQuantity = quantity;
+		
+		if (!validation.isValid) {
+			const availableStock = getAvailableStock(item, item.selectedSize);
+			finalQuantity = Math.min(quantity, availableStock);
+			finalQuantity = Math.max(finalQuantity, 1); // Minimum 1
+			
+			if (finalQuantity !== quantity) {
+				showToast.warning(`Adjusted quantity to ${finalQuantity} (max available: ${availableStock})`);
+			}
 		}
 
 		// Immediately update the UI for instant feedback
 		set((prevState) => ({
 			cart: prevState.cart.map((item) => {
 				if (item.cartId === productId || item._id === productId) {
-					return { ...item, quantity };
+					return { ...item, quantity: finalQuantity };
 				}
 				return item;
 			}),
@@ -152,12 +190,13 @@ export const useCartStore = create((set, get) => ({
 		// Set a new timer to debounce the API call
 		const timer = setTimeout(async () => {
 			try {
-				await axios.put(`/cart/${productId}`, { quantity });
+				await axios.put(`/cart/${productId}`, { quantity: finalQuantity });
 				timers.delete(productId);
 			} catch (error) {
-				// If API call fails, revert the UI change
+				// If API call fails, show error and refresh cart
 				console.error('Failed to update quantity on server:', error);
-				showToast.error('Failed to update quantity');
+				const errorMessage = error.response?.data?.message || 'Failed to update quantity';
+				showToast.error(errorMessage);
 				
 				// Refresh cart from server to get accurate state
 				get().getCartItems();
