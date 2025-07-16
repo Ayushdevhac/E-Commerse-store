@@ -191,15 +191,6 @@ export const createProducts = async (req, res) => {
             return res.status(400).json({ message: 'Invalid price value' });
         }
 
-        // Check for duplicate product names
-        const existingProduct = await Product.findOne({ 
-            name: new RegExp(`^${name}$`, 'i') 
-        });
-        
-        if (existingProduct) {
-            return res.status(409).json({ message: 'Product with this name already exists' });
-        }
-
         let cloudinaryResponse;
         try {
             // Validate image format and size before upload
