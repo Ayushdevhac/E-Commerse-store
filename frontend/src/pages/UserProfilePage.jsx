@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { User, Mail, Calendar, ShoppingBag, Heart, Edit3, Save, X, ArrowLeft } from "lucide-react";
 import { useUserStore } from "../stores/useUserStore";
+import PasswordStrengthMeter from "../components/PasswordStrengthMeter";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { useNavigate } from "react-router-dom";
 import axios from "../lib/axios";
@@ -18,12 +19,13 @@ const UserProfilePage = () => {
 		currentPassword: "",
 		newPassword: "",
 		confirmPassword: ""
-	});
-	const [stats, setStats] = useState({
+	});	const [stats, setStats] = useState({
 		totalOrders: 0,
 		totalSpent: 0,
 		wishlistItems: 0,
 		memberSince: ""
+	});	const [passwordRequirements, setPasswordRequirements] = useState({ 
+		passwordMinLength: 8 
 	});
 
 	useEffect(() => {
@@ -36,8 +38,30 @@ const UserProfilePage = () => {
 				confirmPassword: ""
 			});
 			fetchUserStats();
+			loadPasswordRequirements();
 		}
 	}, [user]);
+
+	const loadPasswordRequirements = async () => {
+		try {
+			const response = await axios.get("/admin/password-requirements");
+			setPasswordRequirements(response.data || { passwordMinLength: 8 });		} catch (error) {
+			// Keep default requirements if fetch fails
+			setPasswordRequirements({ passwordMinLength: 8 });
+		}
+	};
+	// Password strength validation
+	const getPasswordStrength = (password) => {
+		const minLength = passwordRequirements?.passwordMinLength || 8;
+		const criteria = [
+			password.length >= minLength,
+			/[A-Z]/.test(password),
+			/[a-z]/.test(password),
+			/\d/.test(password),
+			/[!@#$%^&*(),.?":{}|<>]/.test(password)
+		];
+		return criteria.filter(Boolean).length;
+	};
 
 	const fetchUserStats = async () => {
 		try {
@@ -55,7 +79,6 @@ const UserProfilePage = () => {
 			[name]: value
 		}));
 	};
-
 	const handleSaveProfile = async () => {
 		if (profileData.newPassword && profileData.newPassword !== profileData.confirmPassword) {
 			showToast.error("New passwords don't match");
@@ -66,7 +89,20 @@ const UserProfilePage = () => {
 			showToast.error("Current password is required to change password");
 			return;
 		}
+		// Validate new password strength if provided
+		if (profileData.newPassword) {
+			const minLength = passwordRequirements?.passwordMinLength || 8;
+			if (profileData.newPassword.length < minLength) {
+				showToast.error(`Password must be at least ${minLength} characters long`);
+				return;
+			}
 
+			const strength = getPasswordStrength(profileData.newPassword);
+			if (strength < 3) {
+				showToast.error("Password is too weak. Please make it stronger.");
+				return;
+			}
+		}
 		try {
 			setLoading(true);
 			const updateData = {
@@ -79,6 +115,8 @@ const UserProfilePage = () => {
 				updateData.newPassword = profileData.newPassword;
 			}
 
+			console.log('Sending profile update data:', updateData);
+			
 			await axios.put("/users/profile", updateData);
 			
 			// Update the user store
@@ -94,10 +132,15 @@ const UserProfilePage = () => {
 				currentPassword: "",
 				newPassword: "",
 				confirmPassword: ""
-			}));
-		} catch (error) {
+			}));		} catch (error) {
 			console.error("Error updating profile:", error);
-			showToast.error(error.response?.data?.message || "Failed to update profile");
+			console.error("Error response:", error.response?.data);
+			console.error("Error status:", error.response?.status);
+			const errorMessage = error.response?.data?.message || 
+				error.response?.data?.errors?.[0]?.message || 
+				error.message || 
+				"Failed to update profile";
+			showToast.error(errorMessage);
 		} finally {
 			setLoading(false);
 		}
@@ -239,9 +282,7 @@ const UserProfilePage = () => {
 											placeholder="Enter current password to change password"
 											className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
 										/>
-									</div>
-
-									<div>
+									</div>									<div>
 										<label className="block text-sm font-medium text-gray-300 mb-2">
 											New Password
 										</label>
@@ -252,10 +293,16 @@ const UserProfilePage = () => {
 											onChange={handleInputChange}
 											placeholder="Enter new password (optional)"
 											className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-										/>
-									</div>
-
-									<div>
+										/>										{/* Password Strength Meter */}
+										{profileData.newPassword && (
+											<div className="mt-3">
+												<PasswordStrengthMeter 
+													password={profileData.newPassword} 
+													minLength={passwordRequirements?.passwordMinLength || 8}
+												/>
+											</div>
+										)}
+									</div>									<div>
 										<label className="block text-sm font-medium text-gray-300 mb-2">
 											Confirm New Password
 										</label>
@@ -267,6 +314,26 @@ const UserProfilePage = () => {
 											placeholder="Confirm new password"
 											className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
 										/>
+										{/* Password Match Indicator */}
+										{profileData.confirmPassword && profileData.newPassword && (
+											<div className={`mt-2 text-sm flex items-center ${
+												profileData.newPassword === profileData.confirmPassword 
+													? 'text-green-400' 
+													: 'text-red-400'
+											}`}>
+												{profileData.newPassword === profileData.confirmPassword ? (
+													<>
+														<Save className="w-4 h-4 mr-1" />
+														Passwords match
+													</>
+												) : (
+													<>
+														<X className="w-4 h-4 mr-1" />
+														Passwords don't match
+													</>
+												)}
+											</div>
+										)}
 									</div>
 								</>
 							)}

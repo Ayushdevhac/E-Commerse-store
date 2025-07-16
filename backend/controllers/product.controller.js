@@ -239,15 +239,13 @@ export const createProducts = async (req, res) => {
                     const stockValue = parseInt(stock[size]) || 0;
                     processedStock.set(size, Math.max(0, stockValue));
                 }
-            } else {
-                // Default stock if not provided
+            } else {                // Default stock if not provided
                 for (let size of processedSizes) {
-                    processedStock.set(size, 10); // Default stock of 10 per size
+                    processedStock.set(size, 25); // Default stock of 25 per size
                 }
-            }
-        } else {
+            }        } else {
             // Simple stock for products without sizes (Number)
-            processedStock = stock && typeof stock === 'number' ? Math.max(0, parseInt(stock)) : 10;
+            processedStock = stock && typeof stock === 'number' ? Math.max(0, parseInt(stock)) : 50;
         }
 
         let cloudinaryResponse;

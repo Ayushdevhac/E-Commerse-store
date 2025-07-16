@@ -203,6 +203,46 @@ export const validatePasswordChange = [
     handleValidationErrors
 ];
 
+export const validateProfileUpdate = [
+    body('name')
+        .optional()
+        .trim()
+        .isLength({ min: 1, max: 100 })
+        .withMessage('Name must be between 1 and 100 characters')
+        .custom((value) => {
+            // Allow letters, spaces, hyphens, apostrophes, periods, and common unicode characters
+            if (value && !/^[\p{L}\s\-'\.]+$/u.test(value)) {
+                throw new Error('Name contains invalid characters');
+            }
+            return true;
+        }),
+    
+    body('email')
+        .optional()
+        .isEmail()
+        .normalizeEmail()
+        .withMessage('Please provide a valid email'),
+    
+    body('currentPassword')
+        .optional()
+        .isString()
+        .withMessage('Current password must be a string'),
+    
+    body('newPassword')
+        .optional()
+        .isLength({ min: 6, max: 128 })
+        .withMessage('New password must be between 6 and 128 characters')
+        .custom((value, { req }) => {
+            // Only validate if newPassword is provided
+            if (value && req.body.currentPassword === undefined) {
+                throw new Error('Current password is required when changing password');
+            }
+            return true;
+        }),
+    
+    handleValidationErrors
+];
+
 // Handle validation errors
 function handleValidationErrors(req, res, next) {
     const errors = validationResult(req);

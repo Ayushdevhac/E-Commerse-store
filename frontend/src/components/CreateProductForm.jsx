@@ -41,8 +41,7 @@ const CreateProductForm = () => {
 	useEffect(() => {
 		setShowSizes(categoryNeedsSizes(newProduct.category));
 	}, [newProduct.category]);	const handleSubmit = async (e) => {
-		e.preventDefault();
-		try {
+		e.preventDefault();		try {
 			// Convert price to number before sending
 			const productData = {
 				...newProduct,
@@ -54,9 +53,9 @@ const CreateProductForm = () => {
 				productData.sizes = newProduct.sizes;
 				productData.stock = newProduct.stock;
 			} else {
-				// Remove sizes and stock if not needed
+				// For products without sizes, set a default stock number
 				delete productData.sizes;
-				delete productData.stock;
+				productData.stock = 50; // Default stock for products without sizes
 			}
 			
 			await createProduct(productData);

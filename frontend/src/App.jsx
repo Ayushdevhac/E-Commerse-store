@@ -17,7 +17,6 @@ import Navbar from "./components/Navbar";
 import NetworkStatus from "./components/NetworkStatus";
 import FeedbackWidget from "./components/FeedbackWidget";
 import PerformanceMonitor from "./components/PerformanceMonitor";
-import DebugInfo from "./components/DebugInfo";
 import { Toaster } from "react-hot-toast";
 import { useUserStore } from "./stores/useUserStore";
 import { useEffect } from "react";
@@ -51,11 +50,7 @@ function App() {
 	if (checkingAuth) {
 		return <LoadingSpinner />;
 	}
-
 	return (		<div className='min-h-screen bg-gray-900 text-white relative overflow-x-hidden'>
-			{/* Debug Info - only shows in development */}
-			<DebugInfo />
-			
 			{/* Network Status Component */}
 			<NetworkStatus />
 			

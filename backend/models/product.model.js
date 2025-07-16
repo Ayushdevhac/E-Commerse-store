@@ -39,7 +39,7 @@ sizes: {
 stock: {
     type: mongoose.Schema.Types.Mixed, // Allow both Map and Number
     default: function() {
-        return this.sizes && this.sizes.length > 0 ? new Map() : 0;
+        return this.sizes && this.sizes.length > 0 ? new Map() : 50;
     },
     validate: {
         validator: function(stock) {

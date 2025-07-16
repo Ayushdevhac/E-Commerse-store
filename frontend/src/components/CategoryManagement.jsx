@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Eye, EyeOff, Search, Filter } from 'lucide-react';
+import toast from 'react-hot-toast';
 import useCategoryStore from '../stores/useCategoryStore';
 import CreateCategoryForm from './CreateCategoryForm';
 import EditCategoryForm from './EditCategoryForm';
@@ -36,15 +37,29 @@ const CategoryManagement = () => {
 
     const handleSearch = (e) => {
         setSearchTerm(e.target.value);
-    };
-
-    const handleDelete = async (id) => {
+    };    const handleDelete = async (id) => {
         if (confirmDelete === id) {
-            await deleteCategory(id);
-            setConfirmDelete(null);
+            try {
+                await deleteCategory(id);
+                setConfirmDelete(null);
+                // Refresh the category list
+                const activeFilter = filterActive === 'all' ? undefined : filterActive === 'active';
+                fetchCategories(currentPage, 10, activeFilter);
+            } catch (error) {
+                console.error('Category deletion failed:', error);
+            }
         } else {
             setConfirmDelete(id);
-            setTimeout(() => setConfirmDelete(null), 3000);
+            toast('Click again to confirm deletion', {
+                icon: '⚠️',
+                duration: 4000,
+            });
+            // Clear confirmation after 5 seconds
+            setTimeout(() => {
+                if (confirmDelete === id) {
+                    setConfirmDelete(null);
+                }
+            }, 5000);
         }
     };
 

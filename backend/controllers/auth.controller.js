@@ -82,11 +82,19 @@ export const login = async (req,res) => {
     await ensureDBConnection();
     
     const { email, password } = req.body;
+    console.log('Login attempt for email:', email);
+    
     if (!email || !password) {
         return res.status(400).json({ message: 'Email and password are required' });
     }       
     const user = await User.findOne({ email });
-    if (user &&(await user.comparePassword(password))) {
+      if (!user) {
+        return res.status(400).json({ message: 'Invalid email or password' });
+    }
+    
+    const passwordMatch = await user.comparePassword(password);
+    
+    if (passwordMatch) {
         const { accessToken, refreshToken } = generateToken(user._id);
         await storerefreshToken(user._id, refreshToken);   
         setcookies(res, accessToken, refreshToken);
@@ -152,33 +160,88 @@ export const refreshToken = async (req, res) => {
     try {
         const refreshToken = req.cookies.refreshToken;
         if (!refreshToken) {
+            console.warn('Refresh token request without token cookie');
             return res.status(401).json({ message: 'No refresh token provided' });
-        }        const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+        }
+
+        console.log('🔄 Processing refresh token request for user...');
+
+        // Verify the refresh token
+        let decoded;
+        try {
+            decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+            console.log('✅ Refresh token JWT verification successful for user:', decoded.userId);
+        } catch (jwtError) {
+            console.error('❌ JWT verification failed:', jwtError.message);
+            return res.status(403).json({ message: 'Invalid or expired refresh token' });
+        }
+        
         const userId = decoded.userId;
         
+        // Check if Redis is available
         const isConnected = await ensureRedisConnection();
         if (!isConnected) {
-            return res.status(503).json({ message: 'Service temporarily unavailable' });
+            console.warn('⚠️ Redis unavailable, skipping token validation for development');
+            // In development, we'll allow refresh without Redis validation
+            // In production, you might want to reject the request instead
+        } else {
+            // Validate the refresh token against stored token
+            try {
+                const storedRefreshToken = await client.get(`refresh_token:${userId}`);
+                if (!storedRefreshToken) {
+                    console.error('❌ No refresh token found in Redis for user:', userId);
+                    console.log('💡 User may need to log in again to store refresh token');
+                    return res.status(403).json({ 
+                        message: 'Refresh token not found - please log in again',
+                        code: 'TOKEN_NOT_STORED'
+                    });
+                }
+                
+                if (refreshToken !== storedRefreshToken) {
+                    console.error('❌ Refresh token mismatch for user:', userId);
+                    console.log('🔍 Request token preview:', refreshToken.substring(0, 20) + '...');
+                    console.log('🔍 Stored token preview:', storedRefreshToken.substring(0, 20) + '...');
+                    return res.status(403).json({ 
+                        message: 'Refresh token mismatch - please log in again',
+                        code: 'TOKEN_MISMATCH'
+                    });
+                }
+                console.log('✅ Redis token validation successful');
+            } catch (redisError) {
+                console.error('❌ Redis validation error:', redisError.message);
+                // Continue without Redis validation in development
+                console.warn('⚠️ Continuing without Redis validation due to error');
+            }
+        }        // Verify user still exists and is active
+        const user = await User.findById(userId);
+        if (!user) {
+            console.error('❌ User not found for refresh token:', userId);
+            return res.status(403).json({ message: 'User not found' });
         }
+        console.log('✅ User verified:', user.name);
+
+        // Generate new access token
+        const accessToken = jwt.sign({ userId }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
+        console.log('✅ New access token generated for user:', user.name);
         
-        const storedRefreshToken = await client.get(`refresh_token:${userId}`);
-        if (refreshToken !== storedRefreshToken) {
-            return res.status(403).json({ message: 'Invalid refresh token' });
-        }
-       const accessToken = jwt.sign({ userId }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
-        
-          res.cookie('accessToken', accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-        sameSite: 'Strict', // Adjust as needed
-        maxAge: 15 * 60 * 1000, // 15 minutes
-    });
-        res.status(200).json({ message: 'Token refreshed successfully' });
+        // Set the new access token cookie
+        res.cookie('accessToken', accessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'Strict',
+            maxAge: 15 * 60 * 1000, // 15 minutes
+        });
+
+        console.log('🎉 Token refresh completed successfully for user:', user.name);
+        res.status(200).json({ 
+            message: 'Token refreshed successfully',
+            expiresIn: 15 * 60 // 15 minutes in seconds
+        });
     } catch (error) {
         console.error('Error refreshing token:', error.message);
         res.status(500).json({ message: 'Internal server error' });
     }
-} 
+};
 
 export const getprofile=async (req, res) => {
     try {

@@ -90,6 +90,13 @@ userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) {
     return next();
   }
+  
+  // Skip hashing if password is already hashed (e.g., in profile update)
+  if (this._isPasswordAlreadyHashed) {
+    delete this._isPasswordAlreadyHashed;
+    return next();
+  }
+  
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
   next();

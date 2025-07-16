@@ -89,13 +89,11 @@ const useCategoryStore = create((set, get) => ({
             set({ loading: false });
             throw error;
         }
-    },
-
-    // Delete category
+    },    // Delete category
     deleteCategory: async (id) => {
         set({ loading: true });
         try {
-            await axiosInstance.delete(`/categories/${id}`);
+            const response = await axiosInstance.delete(`/categories/${id}`);
             set((state) => ({
                 categories: state.categories.filter((cat) => cat._id !== id),
                 totalCategories: state.totalCategories - 1,

@@ -229,7 +229,8 @@ export const deleteCategory = async (req, res) => {
                 console.error("Error deleting image from cloudinary:", error);
             }
         }
-          await Category.findByIdAndDelete(id);
+        
+        await Category.findByIdAndDelete(id);
         
         // Clear categories cache
         try {

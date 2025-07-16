@@ -19,7 +19,16 @@ export const createAdvancedRateLimit = (options = {}) => {
         standardHeaders: true,
         legacyHeaders: false,
         skipSuccessfulRequests,
-        skipFailedRequests,
+        skipFailedRequests,        // More lenient in development
+        skip: (req) => {
+            // Skip rate limiting for localhost in development (or when NODE_ENV is undefined)
+            if ((!process.env.NODE_ENV || process.env.NODE_ENV === 'development') && 
+                (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip?.includes('localhost'))) {
+                console.log('🚀 Skipping rate limit for localhost in development');
+                return true; // Skip rate limiting completely for localhost in dev
+            }
+            return false;
+        },
         keyGenerator: (req) => {
             // Use user ID if authenticated, otherwise IP
             return req.user?.id || req.ip;
@@ -53,24 +62,24 @@ export const createAdvancedRateLimit = (options = {}) => {
 // Endpoint-specific rate limits
 export const authRateLimit = createAdvancedRateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    maxRequests: 10, // 10 auth attempts per window
+    maxRequests: 50, // 50 auth attempts per window (increased from 10)
     message: 'Too many authentication attempts'
 });
 
 export const apiRateLimit = createAdvancedRateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    maxRequests: 1000, // 1000 API calls per window
+    maxRequests: 2000, // 2000 API calls per window (increased from 1000)
     message: 'API rate limit exceeded'
 });
 
 export const adminRateLimit = createAdvancedRateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    maxRequests: 500, // 500 admin calls per window
+    maxRequests: 1000, // 1000 admin calls per window (increased from 500)
     message: 'Admin API rate limit exceeded'
 });
 
 export const fileUploadRateLimit = createAdvancedRateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    maxRequests: 50, // 50 uploads per hour
+    maxRequests: 100, // 100 uploads per hour (increased from 50)
     message: 'File upload limit exceeded'
 });

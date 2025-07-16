@@ -62,17 +62,35 @@ export const useUserStore = create((set, get) => ({
 			console.log(error.message);
 			set({ checkingAuth: false, user: null });
 		}
-	},
-	refreshToken: async () => {
+	},	refreshToken: async () => {
 		// Prevent multiple simultaneous refresh attempts
 		if (get().checkingAuth) return;
 
 		set({ checkingAuth: true });
 		try {
+			console.log('🔄 Attempting to refresh access token...');
 			const response = await axios.post("/auth/refresh-token");
 			set({ checkingAuth: false });
-			return response.data;
+			
+			console.log('✅ Refresh token response:', response.data);
+			
+			// Validate that we got a success response
+			if (response.data?.message === 'Token refreshed successfully') {
+				console.log('🎉 Access token refreshed successfully');
+				return response.data;
+			} else {
+				throw new Error('Invalid refresh response');
+			}
 		} catch (error) {
+			console.error('❌ Token refresh failed:', error.response?.data?.message || error.message);
+			
+			// Check for specific error codes
+			if (error.response?.data?.code === 'TOKEN_NOT_STORED') {
+				console.log('💡 User needs to log in again - refresh token not found in Redis');
+			} else if (error.response?.data?.code === 'TOKEN_MISMATCH') {
+				console.log('💡 User needs to log in again - refresh token mismatch');
+			}
+			
 			set({ user: null, checkingAuth: false });
 			throw error;
 		}
@@ -105,6 +123,8 @@ axios.interceptors.response.use(
 	(response) => response,
 	async (error) => {
 		const originalRequest = error.config;
+		
+		// Only attempt refresh for 401 errors and avoid infinite loops
 		if (error.response?.status === 401 && !originalRequest._retry) {
 			originalRequest._retry = true;
 
@@ -112,21 +132,35 @@ axios.interceptors.response.use(
 				// If a refresh is already in progress, wait for it to complete
 				if (refreshPromise) {
 					await refreshPromise;
+					refreshPromise = null;
 					return axios(originalRequest);
-				}
-
-				// Start a new refresh process
+				}				// Start a new refresh process
 				refreshPromise = useUserStore.getState().refreshToken();
 				await refreshPromise;
 				refreshPromise = null;
 
+				// Retry the original request
 				return axios(originalRequest);
 			} catch (refreshError) {
-				// If refresh fails, redirect to login or handle as needed
-				useUserStore.getState().logout();
+				// If refresh fails, clear promise and redirect to login
+				refreshPromise = null;
+				console.error('❌ Token refresh failed, logging out user');
+				
+				// Only logout if we're not already logged out
+				const currentUser = useUserStore.getState().user;
+				if (currentUser) {
+					await useUserStore.getState().logout();
+				}
+				
+				// Redirect to login page
+				if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+					window.location.href = '/login';
+				}
+				
 				return Promise.reject(refreshError);
 			}
 		}
+		
 		return Promise.reject(error);
 	}
 );
