@@ -98,7 +98,7 @@ export const useProductStore = create((set, get) => ({
 		try {
 			const params = new URLSearchParams({
 				page: page.toString(),
-				limit: options.limit || get().pagination.limit.toString(),
+				limit: (options.limit && options.limit > 0) ? options.limit.toString() : get().pagination.limit.toString(),
 				sort: options.sort || get().filters.sort
 			});
 
@@ -148,7 +148,7 @@ export const useProductStore = create((set, get) => ({
 			const params = new URLSearchParams({
 				q: query,
 				page: page.toString(),
-				limit: options.limit || get().pagination.limit.toString(),
+				limit: (options.limit && options.limit > 0) ? options.limit.toString() : get().pagination.limit.toString(),
 				sort: options.sort || get().filters.sort
 			});
 
@@ -209,24 +209,49 @@ export const useProductStore = create((set, get) => ({
 			showToast.error(error.response?.data?.message || "Failed to update product");
 		}
 	},
-	fetchFeaturedProducts: async () => {
+	fetchFeaturedProducts: async (page = 1, options = {}) => {
 		set({ loading: true, error: null });
 		try {
-			const response = await axios.get("/products/featured");
+			const params = new URLSearchParams({
+				page: page.toString(),
+				limit: (options.limit && options.limit > 0) ? options.limit.toString() : get().pagination.limit.toString()
+			});
+
+			const response = await axios.get(`/products/featured?${params}`);
+			
+			// Handle both old format (direct array) and new format (with pagination)
+			let products, pagination;
+			
+			if (Array.isArray(response.data)) {
+				// Old format - direct array
+				products = response.data;
+				pagination = {
+					currentPage: 1,
+					totalPages: 1,
+					totalProducts: products.length,
+					limit: products.length,
+					hasNextPage: false,
+					hasPrevPage: false
+				};
+			} else {
+				// New format - with pagination
+				products = response.data.products || [];
+				pagination = response.data.pagination || {
+					currentPage: 1,
+					totalPages: 1,
+					totalProducts: products.length,
+					limit: products.length,
+					hasNextPage: false,
+					hasPrevPage: false
+				};
+			}
+			
 			set({ 
-				products: response.data || [], 
+				products, 
 				loading: false, 
 				productType: 'featured',
 				error: null,
-				// Reset pagination for featured products since they're not paginated
-				pagination: {
-					currentPage: 1,
-					totalPages: 1,
-					totalProducts: (response.data || []).length,
-					limit: (response.data || []).length,
-					hasNextPage: false,
-					hasPrevPage: false
-				}
+				pagination
 			});
 		} catch (error) {
 			console.error("Error fetching featured products:", error);

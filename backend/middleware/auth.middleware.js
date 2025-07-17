@@ -8,7 +8,7 @@ dotenv.config();
 // Rate limiting for authentication
 export const authRateLimit = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 200, //  200 attempts per window 
+    max: 1000, //  1000 attempts per window 
     message: { message: 'Too many authentication attempts, please try again later' },
     standardHeaders: true,
     legacyHeaders: false,

@@ -3,6 +3,7 @@ import { ensureRedisConnection } from '../lib/redis.js';
 import { ensureDBConnection } from '../lib/db.js';
 import cloudinary from '../lib/cloudinary.js';
 import Product from '../models/product.model.js';
+import Category from '../models/category.model.js';
 import { body, param, query, validationResult } from 'express-validator';
 import mongoose from 'mongoose';
 
@@ -73,8 +74,8 @@ export const validatePagination = [
         .withMessage('Page must be between 1 and 1000'),
     query('limit')
         .optional()
-        .isInt({ min: 1, max: 100 })
-        .withMessage('Limit must be between 1 and 100'),
+        .isInt({ min: 0, max: 100 })
+        .withMessage('Limit must be between 0 and 100'),
     query('sort')
         .optional()
         .isIn(['price', 'name', 'createdAt', '-price', '-name', '-createdAt'])
@@ -102,7 +103,8 @@ export const getAllProducts = async (req, res) => {
         }
 
         const page = parseInt(req.query.page) || 1;
-        const limit = Math.min(parseInt(req.query.limit) || 12, 100); // Max 100 items per page
+        const limitParam = parseInt(req.query.limit);
+        const limit = limitParam === 0 ? 50 : Math.min(limitParam || 12, 100); // Default to 50 if limit=0, max 100 items per page
         const skip = (page - 1) * limit;
         const sort = req.query.sort || '-createdAt';
         const categoryRaw = req.query.category;
@@ -172,36 +174,80 @@ export const getAllProducts = async (req, res) => {
     }
 };
 
-export const getFeaturedProducts = async (_req, res) => {
+export const getFeaturedProducts = async (req, res) => {
     try {
+        // Get pagination parameters
+        const page = parseInt(req.query.page) || 1;
+        const limitParam = parseInt(req.query.limit);
+        const limit = limitParam === 0 ? 20 : Math.min(limitParam || 20, 100); // Default to 20 for featured
+        const skip = (page - 1) * limit;
+        
         // Ensure Redis connection is available
         const isConnected = await ensureRedisConnection();
         
+        let featuredProducts;
+        let totalFeatured;
+        
         if (isConnected) {
-            let featuredProducts = await client.get('featuredProducts');
+            let cachedData = await client.get('featuredProducts');
             
-            if (featuredProducts) {
-                featuredProducts = JSON.parse(featuredProducts);
-                return res.status(200).json(featuredProducts);
+            if (cachedData) {
+                const allFeatured = JSON.parse(cachedData);
+                totalFeatured = allFeatured.length;
+                featuredProducts = allFeatured.slice(skip, skip + limit);
+                
+                const totalPages = Math.ceil(totalFeatured / limit);
+                
+                return res.status(200).json({
+                    products: featuredProducts,
+                    pagination: {
+                        currentPage: page,
+                        totalPages,
+                        totalProducts: totalFeatured,
+                        limit,
+                        hasNextPage: page < totalPages,
+                        hasPrevPage: page > 1,
+                        nextPage: page < totalPages ? page + 1 : null,
+                        prevPage: page > 1 ? page - 1 : null
+                    }
+                });
             }
         }
         
-        // If Redis is not available or no cached data, fetch from database
-        const featuredProducts = await Product.find({ isFeatured: true }).lean();
-        if (!featuredProducts || featuredProducts.length === 0) {
-            return res.status(404).json({ message: 'No featured products found' });
-        }
+        // If Redis is not available or no cached data, fetch from database with pagination
+        const [products, totalProducts] = await Promise.all([
+            Product.find({ isFeatured: true })
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            Product.countDocuments({ isFeatured: true })
+        ]);
         
-        // Cache the result if Redis is available
-        if (isConnected) {
+        const totalPages = Math.ceil(totalProducts / limit);
+        
+        // Cache all featured products if Redis is available (for faster subsequent requests)
+        if (isConnected && totalProducts > 0) {
             try {
-                await client.set('featuredProducts', JSON.stringify(featuredProducts));
+                const allFeatured = await Product.find({ isFeatured: true }).lean();
+                await client.set('featuredProducts', JSON.stringify(allFeatured), 'EX', 3600); // Cache for 1 hour
             } catch (cacheError) {
                 console.warn('Failed to cache featured products:', cacheError.message);
             }
         }
         
-        res.status(200).json(featuredProducts);
+        res.status(200).json({
+            products,
+            pagination: {
+                currentPage: page,
+                totalPages,
+                totalProducts,
+                limit,
+                hasNextPage: page < totalPages,
+                hasPrevPage: page > 1,
+                nextPage: page < totalPages ? page + 1 : null,
+                prevPage: page > 1 ? page - 1 : null
+            }
+        });
     } catch (error) {
         console.error('Error fetching featured products:', error.message);
         res.status(500).json({ message: 'Internal server error' });
@@ -438,10 +484,26 @@ export const getProductsByCategory = async (req, res) => {
         }
         
         // Decode URI component and normalize
-        const normalizedCategory = decodeURIComponent(category).toLowerCase().trim();
+        const categoryParam = decodeURIComponent(category).trim();
+        
+        // Build query with category - handle both slug and direct name matching
+        let categoryFilter;
+        
+        // First try to find by slug in Category collection
+        const categoryDoc = await Category.findOne({ 
+            slug: categoryParam.toLowerCase() 
+        });
+        
+        if (categoryDoc) {
+            // Use the exact category name from the category document
+            categoryFilter = { category: categoryDoc.name };
+        } else {
+            // Fallback: try direct name matching (case-insensitive)
+            categoryFilter = { category: new RegExp(`^${categoryParam}$`, 'i') };
+        }
         
         // Build query with category and additional filters
-        const filter = { category: new RegExp(`^${normalizedCategory}$`, 'i') };
+        const filter = categoryFilter;
         
         // Add price filters
         if (minPriceRaw !== undefined) {
@@ -456,7 +518,7 @@ export const getProductsByCategory = async (req, res) => {
         // Add search filter
         if (search) {
             filter.$and = [
-                { category: new RegExp(`^${normalizedCategory}$`, 'i') },
+                categoryFilter,
                 {
                     $or: [
                         { name: new RegExp(search, 'i') },
@@ -464,7 +526,8 @@ export const getProductsByCategory = async (req, res) => {
                     ]
                 }
             ];
-            delete filter.category; // Remove category from root since it's in $and
+            // Remove category from root since it's in $and
+            if (filter.category) delete filter.category;
         }
         
         // Execute queries in parallel
@@ -493,7 +556,7 @@ export const getProductsByCategory = async (req, res) => {
                 prevPage: page > 1 ? page - 1 : null
             },
             filters: {
-                category: normalizedCategory,
+                category: categoryDoc ? categoryDoc.name : categoryParam,
                 minPrice: minPriceRaw,
                 maxPrice: maxPriceRaw,
                 search,

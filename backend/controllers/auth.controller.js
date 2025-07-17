@@ -5,37 +5,66 @@ import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 dotenv.config();
 const generateToken = (userId) => {
-    const accessToken = jwt.sign({ userId }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
+    const accessToken = jwt.sign({ userId }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1m' });
     const refreshToken = jwt.sign({ userId }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
     return { accessToken, refreshToken };      
 }    
 const storerefreshToken = async (userId, refreshToken) => {
-    try {     
+    try {
+        console.log('🔄 Storing refresh token for user:', userId);
+        
         const isConnected = await ensureRedisConnection();
         if (!isConnected) {
-            console.warn('Redis not available, skipping refresh token storage');
-            return;
+            console.warn('❌ Redis not available, skipping refresh token storage');
+            throw new Error('Redis connection not available');
         }
         
-        await client.set(`refresh_token:${userId}`, refreshToken, "EX", 7 * 24 * 60 * 60);
+        const result = await client.set(`refresh_token:${userId}`, refreshToken, "EX", 7 * 24 * 60 * 60);
+        console.log('✅ Refresh token stored successfully for user:', userId, 'Result:', result);
+        
+        // Verify the token was actually stored
+        const stored = await client.get(`refresh_token:${userId}`);
+        if (stored) {
+            console.log('✅ Token verification successful');
+        } else {
+            console.error('❌ Token verification failed - not found in Redis');
+        }
     }
     catch (error) {
-        console.error('Error storing refresh token:', error);
+        console.error('❌ Error storing refresh token:', error.message);
+        throw error;
     } 
 }
 
 const setcookies = (res, accessToken, refreshToken) => {
-    res.cookie('accessToken', accessToken, {
+    const isProduction = process.env.NODE_ENV === 'production';
+    
+    // Base cookie options
+    const cookieOptions = {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-        sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax', // Allow cross-site cookies for Stripe redirects
+        secure: isProduction,
+        sameSite: isProduction ? 'None' : 'Lax',
+        path: '/', // Ensure cookies are available site-wide
+    };
+    
+    // Access token cookie (15 minutes)
+    res.cookie('accessToken', accessToken, {
+        ...cookieOptions,
         maxAge: 15 * 60 * 1000, // 15 minutes
     });
+    
+    // Refresh token cookie (7 days)
     res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-        sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax', // Allow cross-site cookies for Stripe redirects
+        ...cookieOptions,
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+    
+    console.log('🍪 Cookies set:', {
+        accessTokenExpiry: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        refreshTokenExpiry: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        isProduction,
+        secure: isProduction,
+        sameSite: isProduction ? 'None' : 'Lax'
     });
 }
 export const signup = async (req, res) => {
@@ -127,30 +156,45 @@ export const login = async (req,res) => {
 
 export const logout = async (req, res) => {
   try {
+    console.log('🚪 Logout process started');
     const refreshToken = req.cookies.refreshToken;
+    
     if (refreshToken) {
-      const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
-      const isConnected = await ensureRedisConnection();
-      if (isConnected) {
-        await client.del(`refresh_token:${decoded.userId}`);
+      try {
+        const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+        console.log('🔍 Decoded token for user:', decoded.userId);
+        
+        const isConnected = await ensureRedisConnection();
+        if (isConnected) {
+          const result = await client.del(`refresh_token:${decoded.userId}`);
+          console.log('🗑️ Refresh token removed from Redis:', result);
+        } else {
+          console.warn('⚠️ Redis not available during logout');
+        }
+      } catch (tokenError) {
+        console.warn('⚠️ Token verification failed during logout (expired/invalid):', tokenError.message);
+        // Continue with logout even if token is invalid
       }
+    } else {
+      console.log('ℹ️ No refresh token found during logout');
     }
 
-    res.clearCookie('accessToken', {
+    // Enhanced cookie clearing with proper options
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
-    }); 
+      secure: isProduction,
+      sameSite: isProduction ? 'None' : 'Lax',
+      path: '/', // Ensure we clear cookies from the same path they were set
+    };
 
-    res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
-    });
+    res.clearCookie('accessToken', cookieOptions); 
+    res.clearCookie('refreshToken', cookieOptions);
+    
+    console.log('✅ Logout completed successfully');
     res.status(200).json({ message: 'Logged out successfully' });
   } catch (error) {
-    console.error('Logout error:', error.message);
-
+    console.error('❌ Logout error:', error.message);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
