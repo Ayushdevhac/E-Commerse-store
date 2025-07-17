@@ -5,8 +5,8 @@ import { client } from '../lib/redis.js';
 export const createAdvancedRateLimit = (options = {}) => {
     const {
         windowMs = 15 * 60 * 1000, // 15 minutes
-        maxRequests = 100,
-        maxPerUser = 50,
+        maxRequests = 1000,
+        maxPerUser = 1000,
         skipSuccessfulRequests = false,
         skipFailedRequests = false,
         message = 'Too many requests, please try again later'
@@ -54,24 +54,24 @@ export const createAdvancedRateLimit = (options = {}) => {
 // Endpoint-specific rate limits
 export const authRateLimit = createAdvancedRateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    maxRequests: 200, //  200 auth attempts per window 
+    maxRequests: 1000, //  1000auth attempts per window 
     message: 'Too many authentication attempts, please try again later'
 });
 
 export const apiRateLimit = createAdvancedRateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    maxRequests: 2000, // 2000 API calls per window (increased from 1000)
+    maxRequests: 1000, // 1000 API calls per window 
     message: 'API rate limit exceeded'
 });
 
 export const adminRateLimit = createAdvancedRateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    maxRequests: 2000, // 1000 admin calls per window (increased from 500)
+    maxRequests: 5000, // 5000 admin calls per window 
     message: 'Admin API rate limit exceeded'
 });
 
 export const fileUploadRateLimit = createAdvancedRateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    maxRequests: 200, // 100 uploads per hour (increased from 50)
+    maxRequests: 400, // 400 uploads per hour 
     message: 'File upload limit exceeded'
 });

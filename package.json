@@ -6,8 +6,7 @@
     "dev": "nodemon backend/server.js",
     "start": "node backend/server.js",
     "build": "cd frontend && npm run build",
-    "auto-complete": "node backend/scripts/autoCompleteOrders.js",
-    "check-orders": "node backend/scripts/checkOrders.js"
+    "auto-complete": "node backend/scripts/autoCompleteOrders.js"
   },
   "keywords": [],
   "author": "",
