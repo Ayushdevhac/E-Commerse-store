@@ -14,7 +14,8 @@ const CategoryPage = () => {	const {
 		loading, 
 		clearProducts, 
 		pagination,
-		filters
+		filters,
+		productType
 	} = useProductStore();
 	const { getCategoryById, activeCategories, fetchActiveCategories } = useCategoryStore();
 
@@ -135,7 +136,7 @@ const CategoryPage = () => {	const {
 		setSearchParams({ page: '1' });
 	}, [setSearchParams]);
 
-	if (loading && products.length === 0) {
+	if (loading || (productType && productType !== 'category' && isInitialized)) {
 		return <LoadingSpinner />;
 	}
 

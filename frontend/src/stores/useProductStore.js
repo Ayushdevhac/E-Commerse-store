@@ -71,7 +71,7 @@ export const useProductStore = create((set, get) => ({
 
 	// Enhanced fetchAllProducts with pagination and filtering
 	fetchAllProducts: async (page = 1, filters = {}) => {
-		set({ loading: true });
+		set({ loading: true, products: [] });
 		try {
 			const params = new URLSearchParams({
 				page: page.toString(),
@@ -94,7 +94,7 @@ export const useProductStore = create((set, get) => ({
 		}
 	},	// Enhanced fetchProductsByCategory with pagination and filters
 	fetchProductsByCategory: async (category, page = 1, options = {}) => {
-		set({ loading: true, error: null });
+		set({ loading: true, error: null, products: [] });
 		try {
 			const params = new URLSearchParams({
 				page: page.toString(),
@@ -143,7 +143,7 @@ export const useProductStore = create((set, get) => ({
 			return;
 		}
 
-		set({ loading: true });
+		set({ loading: true, products: [] });
 		try {
 			const params = new URLSearchParams({
 				q: query,
@@ -286,6 +286,17 @@ export const useProductStore = create((set, get) => ({
 					showToast.error(error.response?.data?.message || "Failed to fetch featured products");
 				}
 			}
+		}
+	},
+
+	// Fetch product categories for filtering (from product aggregation)
+	fetchProductCategories: async () => {
+		try {
+			const response = await axios.get('/products/categories');
+			return response.data;
+		} catch (error) {
+			console.error('Error fetching product categories:', error);
+			return [];
 		}
 	},
 }));

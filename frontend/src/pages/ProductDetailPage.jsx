@@ -6,7 +6,9 @@ import { useProductStore } from "../stores/useProductStore";
 import { useCartStore } from "../stores/useCartStore";
 import { useUserStore } from "../stores/useUserStore";
 import { useWishlistStore } from "../stores/useWishlistStore";
+import useCategoryStore from "../stores/useCategoryStore";
 import { validateQuantity, getAvailableStock } from "../lib/stockValidation";
+import { getCategoryDisplayName } from "../lib/categoryUtils";
 import PeopleAlsoBought from "../components/PeopleAlsoBought";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ReviewList from "../components/ReviewList";
@@ -18,12 +20,19 @@ const ProductDetailPage = () => {
 	const navigate = useNavigate();
 	const { user } = useUserStore();
 	const { addToCart } = useCartStore();
-	const { wishlist, getWishlist, toggleWishlist: toggleWishlistAction, isInWishlist } = useWishlistStore();	const [product, setProduct] = useState(null);
+	const { wishlist, getWishlist, toggleWishlist: toggleWishlistAction, isInWishlist } = useWishlistStore();	
+	const { activeCategories, fetchActiveCategories } = useCategoryStore();
+
+	const [product, setProduct] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [selectedImage, setSelectedImage] = useState(0);
 	const [quantity, setQuantity] = useState(1);
 	const [selectedSize, setSelectedSize] = useState(null);
-	const [activeTab, setActiveTab] = useState("description");	useEffect(() => {		const fetchProduct = async () => {
+	const [activeTab, setActiveTab] = useState("description");	useEffect(() => {
+		// Fetch categories for proper display names
+		fetchActiveCategories();
+		
+		const fetchProduct = async () => {
 			try {
 				setLoading(true);
 				const response = await axios.get(`/products/${id}`);
@@ -46,7 +55,7 @@ const ProductDetailPage = () => {
 		if (id) {
 			fetchProduct();
 		}
-	}, [id, navigate]);
+	}, [id, navigate, fetchActiveCategories]);
 
 	useEffect(() => {
 		if (user) {
@@ -400,7 +409,7 @@ const ProductDetailPage = () => {
 									<div>
 										<h3 className="text-xl font-semibold text-white mb-4">Specifications</h3>
 										<ul className="space-y-2 text-gray-300">
-											<li>• Category: {product.category || "Fashion"}</li>
+											<li>• Category: {getCategoryDisplayName(product.category, activeCategories)}</li>
 											<li>• Material: Premium Cotton</li>
 											<li>• Care: Machine washable</li>
 											<li>• Origin: Made with care</li>

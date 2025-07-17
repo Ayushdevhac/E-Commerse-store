@@ -14,7 +14,8 @@ import {
     validateProductId,
     validatePagination
 } from '../controllers/product.controller.js';
-import { protectRoute, adminRoute, authRateLimit } from '../middleware/auth.middleware.js';
+import { protectRoute, adminRoute } from '../middleware/auth.middleware.js';
+import { authRateLimit } from '../middleware/rateLimiting.middleware.js';
 import rateLimit from 'express-rate-limit';
 
 // Rate limiting for public endpoints

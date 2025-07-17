@@ -111,12 +111,38 @@ const ProductFilters = ({
                         >
                             <option value="">All Categories</option>
                             {categories
-                                .filter(cat => cat._id && isNaN(cat._id)) // Filter out numeric categories
-                                .map((cat) => (
-                                <option key={cat._id} value={cat._id}>
-                                    {cat._id.charAt(0).toUpperCase() + cat._id.slice(1)} ({cat.count})
-                                </option>
-                            ))}
+                                .filter(cat => {
+                                    // Handle both category structures:
+                                    // 1. Product categories from aggregation (has _id and count)
+                                    // 2. Category management objects (has name, slug, etc.)
+                                    if (cat._id && cat.count !== undefined) {
+                                        // This is from product aggregation - _id is the category name
+                                        return cat._id && !isNaN(cat.count) && cat._id.trim() !== '';
+                                    } else if (cat.name && cat.slug) {
+                                        // This is from category management - use slug as value
+                                        return cat.isActive !== false; // Only show active categories
+                                    }
+                                    return false;
+                                })
+                                .map((cat) => {
+                                    // Handle both structures for rendering
+                                    if (cat._id && cat.count !== undefined) {
+                                        // Product aggregation structure
+                                        return (
+                                            <option key={cat._id} value={cat._id}>
+                                                {cat._id.charAt(0).toUpperCase() + cat._id.slice(1)} ({cat.count})
+                                            </option>
+                                        );
+                                    } else {
+                                        // Category management structure
+                                        return (
+                                            <option key={cat._id} value={cat.slug}>
+                                                {cat.name}
+                                            </option>
+                                        );
+                                    }
+                                })
+                            }
                         </select>
                     </div>
 

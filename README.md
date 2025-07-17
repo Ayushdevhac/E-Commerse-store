@@ -353,7 +353,4 @@ npm run test:coverage
 - Ensure all tests pass before submitting PR
 
 
-- **Discussions**: [GitHub Discussions](https://github.com/Ayushdevhac/e-commerce-store/discussions)
-
-
 **Built with ❤️ using React, Node.js, Express, and MongoDB**
