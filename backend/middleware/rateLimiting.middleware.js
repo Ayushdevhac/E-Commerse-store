@@ -20,15 +20,7 @@ export const createAdvancedRateLimit = (options = {}) => {
         legacyHeaders: false,
         skipSuccessfulRequests,
         skipFailedRequests,        // More lenient in development
-        skip: (req) => {
-            // Skip rate limiting for localhost in development (or when NODE_ENV is undefined)
-            if ((!process.env.NODE_ENV || process.env.NODE_ENV === 'development') && 
-                (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip?.includes('localhost'))) {
-                console.log('🚀 Skipping rate limit for localhost in development');
-                return true; // Skip rate limiting completely for localhost in dev
-            }
-            return false;
-        },
+       
         keyGenerator: (req) => {
             // Use user ID if authenticated, otherwise IP
             return req.user?.id || req.ip;
@@ -62,8 +54,8 @@ export const createAdvancedRateLimit = (options = {}) => {
 // Endpoint-specific rate limits
 export const authRateLimit = createAdvancedRateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    maxRequests: 50, // 50 auth attempts per window (increased from 10)
-    message: 'Too many authentication attempts'
+    maxRequests: 200, //  200 auth attempts per window 
+    message: 'Too many authentication attempts, please try again later'
 });
 
 export const apiRateLimit = createAdvancedRateLimit({
@@ -74,12 +66,12 @@ export const apiRateLimit = createAdvancedRateLimit({
 
 export const adminRateLimit = createAdvancedRateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    maxRequests: 1000, // 1000 admin calls per window (increased from 500)
+    maxRequests: 2000, // 1000 admin calls per window (increased from 500)
     message: 'Admin API rate limit exceeded'
 });
 
 export const fileUploadRateLimit = createAdvancedRateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    maxRequests: 100, // 100 uploads per hour (increased from 50)
+    maxRequests: 200, // 100 uploads per hour (increased from 50)
     message: 'File upload limit exceeded'
 });

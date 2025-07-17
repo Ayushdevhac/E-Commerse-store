@@ -17,19 +17,24 @@ const ProductsList = () => {
 		filters,
 		fetchAllProducts,
 		setFilters,
-		clearProducts
+		clearProducts,
+		fetchProductCategories
 	} = useProductStore();
 
 	const { categories, fetchCategories } = useCategoryStore();
 
 	const [searchTerm, setSearchTerm] = useState('');
 	const [showFilters, setShowFilters] = useState(false);
+	const [productCategories, setProductCategories] = useState([]);
+
 	useEffect(() => {
 		// Load products with initial filters
 		fetchAllProducts(1, { sort: '-createdAt' });
-		// Load categories
+		// Load categories for management (these have proper category objects)
 		fetchCategories();
-	}, [fetchAllProducts, fetchCategories]);
+		// Load product categories for filtering (these are aggregated from products)
+		fetchProductCategories().then(setProductCategories);
+	}, [fetchAllProducts, fetchCategories, fetchProductCategories]);
 
 	const handlePageChange = (page) => {
 		fetchAllProducts(page, filters);
@@ -108,7 +113,7 @@ const ProductsList = () => {
 				{showFilters && (
 					<ProductFilters
 						filters={filters}
-						categories={categories}
+						categories={productCategories}
 						onFiltersChange={handleFiltersChange}
 						onClearFilters={handleClearFilters}
 						isLoading={loading}
