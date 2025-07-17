@@ -84,6 +84,14 @@ axiosInstance.interceptors.response.use(
 
         // Handle 401 errors with automatic token refresh
         if (error.response?.status === 401 && !originalRequest._retry) {
+            // Check if we've already failed refresh attempts recently
+            const lastFailedRefresh = sessionStorage.getItem('lastFailedRefresh');
+            const now = Date.now();
+            if (lastFailedRefresh && (now - parseInt(lastFailedRefresh)) < 60000) { // 1 minute cooldown
+                console.log('Recent refresh attempt failed, skipping to avoid infinite loop');
+                return Promise.reject(error);
+            }
+            
             if (isRefreshing) {
                 // If already refreshing, queue this request
                 return new Promise((resolve, reject) => {
@@ -117,14 +125,16 @@ axiosInstance.interceptors.response.use(
                 console.error('❌ Token refresh failed:', refreshError.response?.data?.message || refreshError.message);
                 processQueue(refreshError, null);
                 
-                // Redirect to login or show login modal
+                // Mark the time of failed refresh to prevent infinite loops
+                sessionStorage.setItem('lastFailedRefresh', Date.now().toString());
+                
+                // Clear user state but don't redirect here to avoid infinite loops
                 if (typeof window !== 'undefined') {
                     // Import dynamically to avoid circular dependencies
                     const { useUserStore } = await import('../stores/useUserStore');
                     useUserStore.getState().logout();
                     
-                    // You can add a toast notification here
-                    console.log('🔓 Session expired, please log in again');
+                    console.log('🔓 Session expired - user state cleared');
                 }
                 
                 return Promise.reject(refreshError);

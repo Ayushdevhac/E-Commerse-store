@@ -254,16 +254,16 @@ The application is deployed and available at: **[https://e-commerce-store-seven-
 #### 🔑 **Admin Access Credentials**
 For testing admin features on the deployed website:
 ```
-📧 Email: admin@ecommerce.com
-🔒 Password: Ad12345678#$*#
+📧 Email: admin@gmail.com
+🔒 Password: Admin12@^
 ```
 > **Note**: Please change these credentials after deployment for security reasons.
 
 #### 👤 **Demo User Account**
 For testing customer features:
 ```
-📧 Email: demo@example.com
-🔒 Password:De12345678#$*#
+📧 Email: demo@gmail.com
+🔒 Password:Demo12@^
 ```
 
 ### Frontend Deployment (Vercel)
