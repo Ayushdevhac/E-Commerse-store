@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useProductStore } from "../stores/useProductStore";
 import useCategoryStore from "../stores/useCategoryStore";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -27,37 +27,71 @@ const CategoryPage = () => {	const {
 		maxPrice: null,
 		search: ''
 	});
+	const [isInitialized, setIsInitialized] = useState(false);
+	const prevCategoryRef = useRef(null);
 
 	// Get current page from URL
-	const currentPage = parseInt(searchParams.get('page')) || 1;	// Memoized fetch function to prevent unnecessary re-renders
-	const fetchProducts = useCallback(() => {
-		if (category) {
-			fetchProductsByCategory(category, currentPage, localFilters);
-		}
-	}, [fetchProductsByCategory, category, currentPage, localFilters]);
-
+	const currentPage = parseInt(searchParams.get('page')) || 1;	// Initialize component and restore URL parameters if any
 	useEffect(() => {
+		// Restore filters from URL parameters on component mount
+		const urlMinPrice = searchParams.get('minPrice');
+		const urlMaxPrice = searchParams.get('maxPrice');
+		const urlSearch = searchParams.get('search');
+		const urlSort = searchParams.get('sort');
+
+		if (urlMinPrice || urlMaxPrice || urlSearch || urlSort) {
+			setLocalFilters({
+				sort: urlSort || '-createdAt',
+				minPrice: urlMinPrice ? parseFloat(urlMinPrice) : null,
+				maxPrice: urlMaxPrice ? parseFloat(urlMaxPrice) : null,
+				search: urlSearch || ''
+			});
+		}
+
 		// Fetch active categories for filter dropdown
 		fetchActiveCategories();
-		// Fetch category info by slug
-		if (category) {
-			getCategoryById(category).then(setCategoryInfo);
-		}
-	}, [fetchActiveCategories, getCategoryById, category]);
-	
-	useEffect(() => {
-		// Clear products when component mounts or category changes
-		clearProducts();
-		// Reset page to 1 when category changes to ensure pagination starts at first page
-		setSearchParams({ page: '1' });
-	}, [category, clearProducts, setSearchParams]);
+		setIsInitialized(true);
+	}, [fetchActiveCategories, searchParams]);
 
+	// Handle category changes
+	useEffect(() => {
+		if (category && prevCategoryRef.current !== category) {
+			// Only clear products when switching to a different category
+			if (prevCategoryRef.current !== null) {
+				clearProducts();
+				// Reset page and filters only when actually changing categories
+				setSearchParams({ page: '1' });
+				setLocalFilters({
+					sort: '-createdAt',
+					minPrice: null,
+					maxPrice: null,
+					search: ''
+				});
+			}
+			
+			// Fetch category info by slug
+			getCategoryById(category).then(setCategoryInfo);
+			prevCategoryRef.current = category;
+		}
+	}, [category, getCategoryById, clearProducts, setSearchParams]);
+
+	// Memoized fetch function to prevent unnecessary re-renders
+	const fetchProducts = useCallback(() => {
+		if (category && isInitialized) {
+			fetchProductsByCategory(category, currentPage, localFilters);
+		}
+	}, [fetchProductsByCategory, category, currentPage, localFilters, isInitialized]);
+
+	// Fetch products when dependencies change
 	useEffect(() => {
 		fetchProducts();
 	}, [fetchProducts]);
 	const handlePageChange = (page) => {
 		if (page !== currentPage) {
-			setSearchParams({ page: page.toString() });
+			// Update URL with current filters and new page
+			const newParams = new URLSearchParams(searchParams);
+			newParams.set('page', page.toString());
+			setSearchParams(newParams);
 			window.scrollTo({ top: 0, behavior: 'smooth' });
 		}
 	};
@@ -67,12 +101,27 @@ const CategoryPage = () => {	const {
 		const filtersChanged = JSON.stringify(localFilters) !== JSON.stringify(newFilters);
 		if (filtersChanged) {
 			setLocalFilters(newFilters);
-			// Reset to page 1 when filters change
-			if (currentPage !== 1) {
-				setSearchParams({ page: '1' });
+			
+			// Update URL with new filters
+			const newParams = new URLSearchParams();
+			newParams.set('page', '1'); // Reset to page 1 when filters change
+			
+			if (newFilters.minPrice > 0) {
+				newParams.set('minPrice', newFilters.minPrice.toString());
 			}
+			if (newFilters.maxPrice > 0) {
+				newParams.set('maxPrice', newFilters.maxPrice.toString());
+			}
+			if (newFilters.search) {
+				newParams.set('search', newFilters.search);
+			}
+			if (newFilters.sort && newFilters.sort !== '-createdAt') {
+				newParams.set('sort', newFilters.sort);
+			}
+			
+			setSearchParams(newParams);
 		}
-	}, [localFilters, currentPage, setSearchParams]);
+	}, [localFilters, setSearchParams]);
 
 	const handleClearFilters = useCallback(() => {
 		const clearedFilters = { 
@@ -82,10 +131,9 @@ const CategoryPage = () => {	const {
 			search: ''
 		};
 		setLocalFilters(clearedFilters);
-		if (currentPage !== 1) {
-			setSearchParams({ page: '1' });
-		}
-	}, [currentPage, setSearchParams]);
+		// Clear URL parameters except page
+		setSearchParams({ page: '1' });
+	}, [setSearchParams]);
 
 	if (loading && products.length === 0) {
 		return <LoadingSpinner />;

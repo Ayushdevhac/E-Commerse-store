@@ -4,6 +4,7 @@ import { useUserStore } from "../stores/useUserStore";
 import { useCartStore } from "../stores/useCartStore";
 import { useWishlistStore } from "../stores/useWishlistStore";
 import { useNavigate } from "react-router-dom";
+import { getAvailableStock } from "../lib/stockValidation";
 
 const ProductCard = ({ product }) => {
 	const { user } = useUserStore();
@@ -23,8 +24,9 @@ const ProductCard = ({ product }) => {
 			return;
 		}
 		
-		// Check stock for products without sizes
-		if (typeof product.stock === 'number' && product.stock <= 0) {
+		// Check stock for products without sizes using proper validation
+		const availableStock = getAvailableStock(product, null);
+		if (availableStock <= 0) {
 			showToast.error("This item is out of stock");
 			return;
 		}
@@ -88,6 +90,26 @@ const ProductCard = ({ product }) => {
 					</div>
 				)}
 				
+				{/* Stock Display for products without sizes */}
+				{(!product.sizes || product.sizes.length === 0) && (
+					<div className="mb-3">
+						{(() => {
+							const availableStock = getAvailableStock(product, null);
+							return (
+								<p className={`text-sm ${
+									availableStock > 10 
+										? 'text-green-400' 
+										: availableStock > 0 
+											? 'text-yellow-400' 
+											: 'text-red-400'
+								}`}>
+									{availableStock > 0 ? `${availableStock} in stock` : 'Out of stock'}
+								</p>
+							);
+						})()}
+					</div>
+				)}
+				
 				<div className='mt-auto'>
 					<div className='mb-3 sm:mb-4 flex items-center justify-between'>
 						<p>
@@ -100,12 +122,43 @@ const ProductCard = ({ product }) => {
 						)}
 					</div>
 					<button
-						className='flex items-center justify-center rounded-lg bg-emerald-600 px-3 sm:px-5 py-2 sm:py-2.5 text-center text-sm font-medium text-white hover:bg-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-300 w-full transition-all duration-200 transform hover:scale-105 active:scale-95'
+						className={`flex items-center justify-center rounded-lg px-3 sm:px-5 py-2 sm:py-2.5 text-center text-sm font-medium text-white w-full transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+							(() => {
+								const availableStock = getAvailableStock(product, null);
+								return availableStock > 0 
+									? 'bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-300'
+									: 'bg-gray-600 cursor-not-allowed opacity-70';
+							})()
+						}`}
 						onClick={handleAddToCart}
+						disabled={getAvailableStock(product, null) <= 0}
 					>
 						<ShoppingCart size={18} className='mr-2' />
-						<span className='hidden sm:inline'>Add to cart</span>
-						<span className='sm:hidden'>Add</span>
+						{(() => {
+							const availableStock = getAvailableStock(product, null);
+							if (product.sizes && product.sizes.length > 0) {
+								return (
+									<>
+										<span className='hidden sm:inline'>Select Size</span>
+										<span className='sm:hidden'>Size</span>
+									</>
+								);
+							} else if (availableStock <= 0) {
+								return (
+									<>
+										<span className='hidden sm:inline'>Out of Stock</span>
+										<span className='sm:hidden'>Out</span>
+									</>
+								);
+							} else {
+								return (
+									<>
+										<span className='hidden sm:inline'>Add to cart</span>
+										<span className='sm:hidden'>Add</span>
+									</>
+								);
+							}
+						})()}
 					</button>
 				</div>
 			</div>

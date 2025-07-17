@@ -34,11 +34,22 @@ export const useProductStore = create((set, get) => ({
 			hasNextPage: false,
 			hasPrevPage: false
 		}
+		// Note: We don't clear filters here to allow state persistence
 	}),
 
 	setFilters: (newFilters) => set((state) => ({
 		filters: { ...state.filters, ...newFilters }
 	})),
+
+	clearFilters: () => set({
+		filters: {
+			category: null,
+			minPrice: null,
+			maxPrice: null,
+			search: '',
+			sort: '-createdAt'
+		}
+	}),
 
 	setPagination: (pagination) => set({ pagination }),
 

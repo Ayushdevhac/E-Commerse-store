@@ -88,7 +88,7 @@ export const login = async (req,res) => {
         return res.status(400).json({ message: 'Email and password are required' });
     }       
     const user = await User.findOne({ email });
-      if (!user) {
+    if (!user) {
         return res.status(400).json({ message: 'Invalid email or password' });
     }
     
@@ -139,13 +139,13 @@ export const logout = async (req, res) => {
     res.clearCookie('accessToken', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'Strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
     }); 
 
     res.clearCookie('refreshToken', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'Strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
     });
     res.status(200).json({ message: 'Logged out successfully' });
   } catch (error) {
@@ -220,17 +220,15 @@ export const refreshToken = async (req, res) => {
         }
         console.log('✅ User verified:', user.name);
 
-        // Generate new access token
-        const accessToken = jwt.sign({ userId }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
-        console.log('✅ New access token generated for user:', user.name);
+        // Generate new access token AND new refresh token for security
+        const { accessToken, refreshToken: newRefreshToken } = generateToken(userId);
+        console.log('✅ New access and refresh tokens generated for user:', user.name);
         
-        // Set the new access token cookie
-        res.cookie('accessToken', accessToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'Strict',
-            maxAge: 15 * 60 * 1000, // 15 minutes
-        });
+        // Store the new refresh token in Redis
+        await storerefreshToken(userId, newRefreshToken);
+        
+        // Set both new tokens as cookies
+        setcookies(res, accessToken, newRefreshToken);
 
         console.log('🎉 Token refresh completed successfully for user:', user.name);
         res.status(200).json({ 

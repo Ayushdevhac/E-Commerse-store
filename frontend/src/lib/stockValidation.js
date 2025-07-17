@@ -1,6 +1,12 @@
 // Frontend stock validation utilities - mirror backend logic
 export function getAvailableStock(product, selectedSize) {
-    if (!product || !product.stock) return 0;
+    if (!product) return 0;
+    
+    // If product doesn't have stock field, provide default stock
+    if (!product.hasOwnProperty('stock') || product.stock === undefined) {
+        // For legacy products without stock field, assume default stock of 50
+        return (!product.sizes || product.sizes.length === 0) ? 50 : null;
+    }
     
     if (product.sizes && product.sizes.length > 0) {
         if (!selectedSize) return null;

@@ -56,7 +56,22 @@ axiosInstance.interceptors.request.use(
     }
 );
 
-// Add response interceptor for better error handling
+// Add response interceptor for automatic token refresh and error handling
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+    failedQueue.forEach(prom => {
+        if (error) {
+            prom.reject(error);
+        } else {
+            prom.resolve(token);
+        }
+    });
+    
+    failedQueue = [];
+};
+
 axiosInstance.interceptors.response.use(
     (response) => {
         if (import.meta.env.MODE === 'development') {
@@ -64,7 +79,61 @@ axiosInstance.interceptors.response.use(
         }
         return response;
     },
-    (error) => {
+    async (error) => {
+        const originalRequest = error.config;
+
+        // Handle 401 errors with automatic token refresh
+        if (error.response?.status === 401 && !originalRequest._retry) {
+            if (isRefreshing) {
+                // If already refreshing, queue this request
+                return new Promise((resolve, reject) => {
+                    failedQueue.push({ resolve, reject });
+                }).then(() => {
+                    return axiosInstance(originalRequest);
+                }).catch(err => {
+                    return Promise.reject(err);
+                });
+            }
+
+            originalRequest._retry = true;
+            isRefreshing = true;
+
+            try {
+                console.log('🔄 Access token expired, attempting refresh...');
+                
+                // Attempt to refresh the token
+                const refreshResponse = await axiosInstance.post('/auth/refresh-token');
+                
+                if (refreshResponse.data?.message === 'Token refreshed successfully') {
+                    console.log('✅ Token refreshed successfully, retrying original request');
+                    processQueue(null);
+                    
+                    // Retry the original request
+                    return axiosInstance(originalRequest);
+                } else {
+                    throw new Error('Invalid refresh response');
+                }
+            } catch (refreshError) {
+                console.error('❌ Token refresh failed:', refreshError.response?.data?.message || refreshError.message);
+                processQueue(refreshError, null);
+                
+                // Redirect to login or show login modal
+                if (typeof window !== 'undefined') {
+                    // Import dynamically to avoid circular dependencies
+                    const { useUserStore } = await import('../stores/useUserStore');
+                    useUserStore.getState().logout();
+                    
+                    // You can add a toast notification here
+                    console.log('🔓 Session expired, please log in again');
+                }
+                
+                return Promise.reject(refreshError);
+            } finally {
+                isRefreshing = false;
+            }
+        }
+
+        // Handle other types of errors
         if (error.code === 'ECONNABORTED') {
             console.error('⏰ Request timeout - API server may be slow or unreachable');
         } else if (error.response) {

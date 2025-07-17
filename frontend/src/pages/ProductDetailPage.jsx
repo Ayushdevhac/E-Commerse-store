@@ -241,8 +241,8 @@ const ProductDetailPage = () => {
 								{selectedSize && (
 									<p className="text-sm text-gray-400">
 										Selected size: <span className="text-emerald-400 font-medium">{selectedSize}</span>
-										{getAvailableStock() > 0 && (
-											<span className="ml-2 text-gray-500">({getAvailableStock()} available)</span>
+										{getCurrentAvailableStock() > 0 && (
+											<span className="ml-2 text-gray-500">({getCurrentAvailableStock()} available)</span>
 										)}
 									</p>
 								)}
@@ -269,9 +269,14 @@ const ProductDetailPage = () => {
 									</div>
 								) : (
 									<div className="text-sm">
-										<span className={`${product.stock > 10 ? 'text-green-400' : product.stock > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
-											{product.stock > 0 ? `${product.stock} in stock` : 'Out of stock'}
-										</span>
+										{(() => {
+											const availableStock = getCurrentAvailableStock();
+											return (
+												<span className={`${availableStock > 10 ? 'text-green-400' : availableStock > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+													{availableStock > 0 ? `${availableStock} in stock` : 'Out of stock'}
+												</span>
+											);
+										})()}
 									</div>
 								)}
 							</div>
@@ -280,7 +285,7 @@ const ProductDetailPage = () => {
 							<div className="flex items-center justify-between">
 								<span className="text-lg font-medium">Quantity:</span>
 								<span className="text-sm text-gray-400">
-									{getAvailableStock() > 0 ? `${getAvailableStock()} available` : 'Out of stock'}
+									{getCurrentAvailableStock() > 0 ? `${getCurrentAvailableStock()} available` : 'Out of stock'}
 								</span>
 							</div>
 							<div className="flex items-center bg-gray-800 rounded-lg">
@@ -294,30 +299,30 @@ const ProductDetailPage = () => {
 								<span className="px-4 py-2 font-medium min-w-[3rem] text-center">{quantity}</span>
 								<button
 									onClick={() => handleQuantityChange(1)}
-									disabled={quantity >= getAvailableStock() || getAvailableStock() === 0}
+									disabled={quantity >= getCurrentAvailableStock() || getCurrentAvailableStock() === 0}
 									className="p-2 hover:bg-gray-700 rounded-r-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 								>
 									<Plus className="w-4 h-4" />
 								</button>
-							</div>							{quantity === getAvailableStock() && getAvailableStock() > 0 && (
+							</div>							{quantity === getCurrentAvailableStock() && getCurrentAvailableStock() > 0 && (
 								<p className="text-sm text-yellow-400">
 									Maximum quantity reached
 								</p>
 							)}
-							{getAvailableStock() > 0 && getAvailableStock() <= 5 && (
+							{getCurrentAvailableStock() > 0 && getCurrentAvailableStock() <= 5 && (
 								<p className="text-sm text-orange-400">
-									⚠️ Only {getAvailableStock()} left in stock!
+									⚠️ Only {getCurrentAvailableStock()} left in stock!
 								</p>
 							)}
 						</div>						{/* Action Buttons */}
 						<div className="flex space-x-4">
 							<button
 								onClick={handleAddToCart}
-								disabled={getAvailableStock() === 0 || (product.sizes && product.sizes.length > 0 && !selectedSize)}
+								disabled={getCurrentAvailableStock() === 0 || (product.sizes && product.sizes.length > 0 && !selectedSize)}
 								className="flex-1 bg-emerald-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center justify-center disabled:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
 							>
 								<ShoppingCart className="w-5 h-5 mr-2" />
-								{getAvailableStock() === 0 ? 'Out of Stock' : 'Add to Cart'}
+								{getCurrentAvailableStock() === 0 ? 'Out of Stock' : 'Add to Cart'}
 							</button><button
 								onClick={toggleWishlist}
 								className={`p-3 rounded-lg border transition-colors ${

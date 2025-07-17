@@ -12,7 +12,8 @@ const CreateProductForm = () => {
 		category: "",
 		image: "",
 		sizes: [],
-		stock: {}
+		stock: {},
+		defaultStock: 50 // For products without sizes
 	});
 	const [showSizes, setShowSizes] = useState(false);
 	const { createProduct, loading } = useProductStore();
@@ -53,9 +54,9 @@ const CreateProductForm = () => {
 				productData.sizes = newProduct.sizes;
 				productData.stock = newProduct.stock;
 			} else {
-				// For products without sizes, set a default stock number
+				// For products without sizes, use the defaultStock value
 				delete productData.sizes;
-				productData.stock = 50; // Default stock for products without sizes
+				productData.stock = parseInt(newProduct.defaultStock) || 50;
 			}
 			
 			await createProduct(productData);
@@ -67,7 +68,8 @@ const CreateProductForm = () => {
 				category: "", 
 				image: "",
 				sizes: [],
-				stock: {}
+				stock: {},
+				defaultStock: 50
 			});
 			setShowSizes(false);
 		} catch(error) {
@@ -221,67 +223,99 @@ const CreateProductForm = () => {
 						)}
 					</select>				</div>
 
-				{/* Sizes Section */}
-				{(showSizes || newProduct.sizes.length > 0) && (
+				{/* Stock Input for Products Without Sizes */}
+				{(!showSizes && newProduct.sizes.length === 0) && (
 					<div>
-						<div className="flex items-center justify-between mb-3">
-							<label className='block text-sm font-medium text-gray-300'>
-								Available Sizes
-							</label>
-							<button
-								type="button"
-								onClick={() => setShowSizes(!showSizes)}
-								className="text-sm text-emerald-400 hover:text-emerald-300"
-							>
-								{showSizes ? 'Hide Sizes' : 'Add Sizes'}
-							</button>
-						</div>
-						
-						{showSizes && (
-							<div className="space-y-4">
-								<div className="grid grid-cols-4 gap-2">
-									{getSizeOptionsForCategory().map((size) => (
-										<button
-											key={size}
-											type="button"
-											onClick={() => handleSizeToggle(size)}
-											className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-												newProduct.sizes.includes(size)
-													? 'bg-emerald-600 text-white'
-													: 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-											}`}
-										>
-											{size}
-										</button>
-									))}
-								</div>
-								
-								{/* Stock Management */}
-								{newProduct.sizes.length > 0 && (
-									<div className="space-y-2">
-										<label className='block text-sm font-medium text-gray-300'>
-											Stock per Size
-										</label>
-										<div className="grid grid-cols-2 gap-3">
-											{newProduct.sizes.map((size) => (
-												<div key={size} className="flex items-center space-x-2">
-													<span className="text-sm text-gray-300 w-8">{size}:</span>
-													<input
-														type="number"
-														min="0"
-														value={newProduct.stock[size] || 0}
-														onChange={(e) => handleStockChange(size, e.target.value)}
-														className="flex-1 bg-gray-700 border border-gray-600 rounded-md px-2 py-1 text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-													/>
-												</div>
-											))}
-										</div>
-									</div>
-								)}
-							</div>
-						)}
+						<label htmlFor='defaultStock' className='block text-sm font-medium text-gray-300'>
+							Stock Quantity
+						</label>
+						<input
+							type='number'
+							id='defaultStock'
+							name='defaultStock'
+							min='0'
+							value={newProduct.defaultStock}
+							onChange={(e) => setNewProduct({ ...newProduct, defaultStock: e.target.value })}
+							className='mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm 
+							py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500
+							focus:border-emerald-500'
+							placeholder='Enter stock quantity'
+						/>
+						<p className='mt-1 text-sm text-gray-400'>
+							Number of items available for sale
+						</p>
 					</div>
 				)}
+
+				{/* Sizes Section */}
+				<div>
+					<div className="flex items-center justify-between mb-3">
+						<label className='block text-sm font-medium text-gray-300'>
+							Product Sizes (Optional)
+						</label>
+						<button
+							type="button"
+							onClick={() => {
+								setShowSizes(!showSizes);
+								// Reset sizes when hiding
+								if (showSizes) {
+									setNewProduct({ 
+										...newProduct, 
+										sizes: [], 
+										stock: {} 
+									});
+								}
+							}}
+							className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors"
+						>
+							{showSizes ? 'Remove Sizes' : 'Add Sizes'}
+						</button>
+					</div>
+					
+					{showSizes && (
+						<div className="space-y-4">
+							<div className="grid grid-cols-4 gap-2">
+								{getSizeOptionsForCategory().map((size) => (
+									<button
+										key={size}
+										type="button"
+										onClick={() => handleSizeToggle(size)}
+										className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+											newProduct.sizes.includes(size)
+												? 'bg-emerald-600 text-white'
+												: 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+										}`}
+									>
+										{size}
+									</button>
+								))}
+							</div>
+							
+							{/* Stock Management */}
+							{newProduct.sizes.length > 0 && (
+								<div className="space-y-2">
+									<label className='block text-sm font-medium text-gray-300'>
+										Stock per Size
+									</label>
+									<div className="grid grid-cols-2 gap-3">
+										{newProduct.sizes.map((size) => (
+											<div key={size} className="flex items-center space-x-2">
+												<span className="text-sm text-gray-300 w-8">{size}:</span>
+												<input
+													type="number"
+													min="0"
+													value={newProduct.stock[size] || 0}
+													onChange={(e) => handleStockChange(size, e.target.value)}
+													className="flex-1 bg-gray-700 border border-gray-600 rounded-md px-2 py-1 text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+												/>
+											</div>
+										))}
+									</div>
+								</div>
+							)}
+						</div>
+					)}
+				</div>
 
 				<div className='mt-1 flex items-center'>
 					<input type='file' id='image' className='sr-only' accept='image/*' onChange={handleImageChange} />
