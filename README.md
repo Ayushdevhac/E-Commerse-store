@@ -352,9 +352,7 @@ npm run test:coverage
 - Update documentation as needed
 - Ensure all tests pass before submitting PR
 
-## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/Ayushdevhac/e-commerce-store/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/Ayushdevhac/e-commerce-store/discussions)
 
 
