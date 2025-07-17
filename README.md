@@ -65,7 +65,7 @@ A full-stack modern e-commerce application built with React, Node.js, Express, a
 
 ### 📥 Clone the Repository
 ```bash
-git clone https://github.com/yourusername/e-commerce-store.git
+git clone https://github.com/Ayushdevhac/E-Commerse-store.git
 cd e-commerce-store
 ```
 
@@ -99,7 +99,6 @@ PORT=5000
 NODE_ENV=development
 
 # Security
-ADMIN_EMAIL=admin@example.com
 MASTER_API_KEY=your-master-api-key-for-admin
 ```
 
@@ -147,7 +146,6 @@ npm run dev
 ### 🌐 Access the Application
 - **Frontend**: http://localhost:5173
 - **Backend API**: http://localhost:5000
-- **API Documentation**: http://localhost:5000/api/docs (if available)
 
 ### 👨‍💼 Admin Access
 1. Register a new account
@@ -211,13 +209,6 @@ npm run lint:fix           # Fix linting issues
 3. Get the connection string
 4. Update `MONGO_URI` in your `.env` file
 
-### Sample Data
-The application includes seed data for testing:
-```bash
-# Seed the database with sample products and admin user
-npm run seed
-```
-
 ## 📱 API Endpoints
 
 ### Authentication
@@ -243,8 +234,6 @@ npm run seed
 - `GET /api/orders` - Get user orders
 - `POST /api/orders` - Create new order
 - `GET /api/orders/:id` - Get single order
-
-For a complete API reference, see the [API Documentation](./API.md).
 
 ## 🚀 Deployment
 
@@ -313,8 +302,6 @@ git push heroku main
 - **Railway MongoDB**: One-click MongoDB deployment
 - **DigitalOcean Managed Database**: Scalable database solution
 
-### Complete Deployment Guide
-For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ## 🛡️ Security Features
 
@@ -367,35 +354,8 @@ npm run test:coverage
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/e-commerce-store/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/e-commerce-store/discussions)
-- **Email**: support@yourapp.com
+- **Issues**: [GitHub Issues](https://github.com/Ayushdevhac/e-commerce-store/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Ayushdevhac/e-commerce-store/discussions)
 
-## 🙏 Acknowledgments
 
-- React team for the amazing framework
-- MongoDB for the flexible database
-- Stripe for secure payment processing
-- Cloudinary for image management
-- All contributors and testers
-
-## 🔄 Changelog
-
-### v2.0.0 (Latest)
-- ✅ Fixed React Rules of Hooks violations
-- ✅ Improved production deployment configuration
-- ✅ Enhanced error handling and recovery
-- ✅ Added comprehensive cart and stock validation
-- ✅ Optimized build configuration for Vercel
-- ✅ Added robust environment variable handling
-
-### v1.0.0
-- 🎉 Initial release
-- ✅ Complete e-commerce functionality
-- ✅ Admin dashboard
-- ✅ Payment integration
-- ✅ Responsive design
-
----
-
-**Built with ❤️ using React, Node.js, and MongoDB**
+**Built with ❤️ using React, Node.js, Express, and MongoDB**
