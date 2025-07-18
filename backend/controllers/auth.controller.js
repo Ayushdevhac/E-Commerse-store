@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 dotenv.config();
 const generateToken = (userId) => {
-    const accessToken = jwt.sign({ userId }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
+    const accessToken = jwt.sign({ userId }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1m' });
     const refreshToken = jwt.sign({ userId }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
     return { accessToken, refreshToken };      
 }    
@@ -39,49 +39,30 @@ const storerefreshToken = async (userId, refreshToken) => {
 const setcookies = (res, accessToken, refreshToken) => {
     const isProduction = process.env.NODE_ENV === 'production';
     
-    if (isProduction) {
-        // Production: Use httpOnly cookies for security
-        const cookieOptions = {
-            httpOnly: true,
-            secure: true,
-            sameSite: 'None',
-            path: '/',
-        };
-        
-        res.cookie('accessToken', accessToken, {
-            ...cookieOptions,
-            maxAge: 15 * 60 * 1000, // 15 minutes
-        });
-        
-        res.cookie('refreshToken', refreshToken, {
-            ...cookieOptions,
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        });
-    } else {
-        // Development: Use regular cookies that JavaScript can access
-        const cookieOptions = {
-            httpOnly: false, // Allow JavaScript access for development
-            secure: false,
-            sameSite: 'Lax',
-            path: '/',
-        };
-        
-        res.cookie('accessToken', accessToken, {
-            ...cookieOptions,
-            maxAge: 15 * 60 * 1000, // 15 minutes
-        });
-        
-        res.cookie('refreshToken', refreshToken, {
-            ...cookieOptions,
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        });
-    }
+    // Base cookie options
+    const cookieOptions = {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? 'None' : 'Lax',
+        path: '/', // Ensure cookies are available site-wide
+    };
+    
+    // Access token cookie (15 minutes)
+    res.cookie('accessToken', accessToken, {
+        ...cookieOptions,
+        maxAge: 15 * 60 * 1000, // 15 minutes
+    });
+    
+    // Refresh token cookie (7 days)
+    res.cookie('refreshToken', refreshToken, {
+        ...cookieOptions,
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
     
     console.log('🍪 Cookies set:', {
         accessTokenExpiry: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
         refreshTokenExpiry: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         isProduction,
-        httpOnly: isProduction,
         secure: isProduction,
         sameSite: isProduction ? 'None' : 'Lax'
     });
@@ -201,10 +182,10 @@ export const logout = async (req, res) => {
     // Enhanced cookie clearing with proper options
     const isProduction = process.env.NODE_ENV === 'production';
     const cookieOptions = {
-      httpOnly: isProduction, // Match the httpOnly setting used when setting cookies
+      httpOnly: true,
       secure: isProduction,
       sameSite: isProduction ? 'None' : 'Lax',
-      path: '/',
+      path: '/', // Ensure we clear cookies from the same path they were set
     };
 
     res.clearCookie('accessToken', cookieOptions); 
