@@ -6,7 +6,6 @@ let apiUrl;
 // First priority: explicit environment variable
 if (import.meta.env.VITE_API_URL) {
     apiUrl = import.meta.env.VITE_API_URL;
-    console.log('Using VITE_API_URL:', apiUrl);
 } else if (typeof window !== 'undefined') {
     // Check if we're on Vercel or other platforms
     const hostname = window.location.hostname;
@@ -15,22 +14,17 @@ if (import.meta.env.VITE_API_URL) {
     if (hostname.includes('vercel.app') || hostname.includes('netlify.app')) {
         // For Vercel/Netlify, we need the backend API URL to be explicitly set
         // This should ALWAYS be configured via environment variables in production
-        console.error('⚠️ VITE_API_URL not set for production deployment! This will likely cause API failures.');
-        console.warn('Please set VITE_API_URL environment variable in your Vercel project settings.');
         apiUrl = '/api'; // Fallback, but this probably won't work
     } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
         // Local development fallback
         apiUrl = 'http://localhost:5000/api';
-        console.log('Using local development API URL:', apiUrl);
     } else {
         // Production fallback - same domain (only works if frontend and backend are on same domain)
         apiUrl = `${protocol}//${hostname}/api`;
-        console.log('Using same-domain API URL:', apiUrl);
     }
 } else {
     // Fallback for SSR or when window is not available
     apiUrl = '/api';
-    console.log('Using SSR fallback API URL:', apiUrl);
 }
 
 const axiosInstance = axios.create({
@@ -45,13 +39,9 @@ const axiosInstance = axios.create({
 // Add request interceptor for debugging
 axiosInstance.interceptors.request.use(
     (config) => {
-        if (import.meta.env.MODE === 'development') {
-            console.log('🚀 Making request to:', config.baseURL + config.url);
-        }
         return config;
     },
     (error) => {
-        console.error('❌ Request error:', error);
         return Promise.reject(error);
     }
 );
@@ -74,9 +64,6 @@ const processQueue = (error, token = null) => {
 
 axiosInstance.interceptors.response.use(
     (response) => {
-        if (import.meta.env.MODE === 'development') {
-            console.log('✅ Response received:', response.status, response.config.url);
-        }
         return response;
     },
     async (error) => {
@@ -84,11 +71,10 @@ axiosInstance.interceptors.response.use(
 
         // Handle 401 errors with automatic token refresh
         if (error.response?.status === 401 && !originalRequest._retry) {
-            // Check if we've already failed refresh attempts recently
-            const lastFailedRefresh = sessionStorage.getItem('lastFailedRefresh');
-            const now = Date.now();
-            if (lastFailedRefresh && (now - parseInt(lastFailedRefresh)) < 60000) { // 1 minute cooldown
-                console.log('Recent refresh attempt failed, skipping to avoid infinite loop');
+            // Skip refresh for auth-related endpoints to avoid infinite loops
+            if (originalRequest.url?.includes('/auth/refresh-token') || 
+                originalRequest.url?.includes('/auth/login') ||
+                originalRequest.url?.includes('/auth/signup')) {
                 return Promise.reject(error);
             }
             
@@ -107,13 +93,10 @@ axiosInstance.interceptors.response.use(
             isRefreshing = true;
 
             try {
-                console.log('🔄 Access token expired, attempting refresh...');
-                
                 // Attempt to refresh the token
                 const refreshResponse = await axiosInstance.post('/auth/refresh-token');
                 
                 if (refreshResponse.data?.message === 'Token refreshed successfully') {
-                    console.log('✅ Token refreshed successfully, retrying original request');
                     processQueue(null);
                     
                     // Retry the original request
@@ -122,19 +105,14 @@ axiosInstance.interceptors.response.use(
                     throw new Error('Invalid refresh response');
                 }
             } catch (refreshError) {
-                console.error('❌ Token refresh failed:', refreshError.response?.data?.message || refreshError.message);
                 processQueue(refreshError, null);
                 
-                // Mark the time of failed refresh to prevent infinite loops
-                sessionStorage.setItem('lastFailedRefresh', Date.now().toString());
-                
-                // Clear user state but don't redirect here to avoid infinite loops
+                // Clear user state but don't call logout to avoid more requests
                 if (typeof window !== 'undefined') {
                     // Import dynamically to avoid circular dependencies
                     const { useUserStore } = await import('../stores/useUserStore');
-                    useUserStore.getState().logout();
-                    
-                    console.log('🔓 Session expired - user state cleared');
+                    const store = useUserStore.getState();
+                    store.set?.({ user: null, checkingAuth: false });
                 }
                 
                 return Promise.reject(refreshError);
@@ -145,26 +123,16 @@ axiosInstance.interceptors.response.use(
 
         // Handle other types of errors
         if (error.code === 'ECONNABORTED') {
-            console.error('⏰ Request timeout - API server may be slow or unreachable');
+            // Request timeout - API server may be slow or unreachable
         } else if (error.response) {
-            console.error('📡 API Response error:', {
-                status: error.response.status,
-                url: error.config?.url,
-                message: error.response.data?.message || 'Unknown error'
-            });
+            // API Response error
         } else if (error.request) {
-            console.error('🌐 Network error - Cannot reach API server:', {
-                url: error.config?.url,
-                baseURL: error.config?.baseURL,
-                message: 'Please check your internet connection and API server status'
-            });
+            // Network error - Cannot reach API server
         } else {
-            console.error('⚙️ Request setup error:', error.message);
+            // Request setup error
         }
         return Promise.reject(error);
     }
 );
-
-console.log('🔧 Axios configured with baseURL:', apiUrl);
 
 export default axiosInstance;

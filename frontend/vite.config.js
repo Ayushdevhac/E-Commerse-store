@@ -10,6 +10,24 @@ export default defineConfig({
         target: process.env.VITE_API_URL || 'http://localhost:5000',
         changeOrigin: true,
         secure: false,
+        cookieDomainRewrite: 'localhost',
+        cookiePathRewrite: {
+          '*': '/'
+        },
+        configure: (proxy, options) => {
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            // Force cookie domain rewriting for localhost development
+            if (proxyRes.headers['set-cookie']) {
+              proxyRes.headers['set-cookie'] = proxyRes.headers['set-cookie'].map(cookie => {
+                // Remove domain restrictions for localhost development
+                return cookie
+                  .replace(/Domain=localhost:5000/gi, '')
+                  .replace(/Domain=localhost/gi, '')
+                  .replace(/; Domain=[^;]*/gi, ''); // Remove any Domain directive
+              });
+            }
+          });
+        }
       }
     }
   },

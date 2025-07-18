@@ -33,10 +33,19 @@ function App() {
 	const { getWishlist } = useWishlistStore();
 
 	useEffect(() => {
-		checkAuth().catch(error => {
-			console.error('Auth check failed:', error);
-		});
-	}, [checkAuth]);
+		const initializeAuth = async () => {
+			// Only initialize if not already checking auth
+			if (!checkingAuth) {
+				try {
+					await checkAuth();
+				} catch (error) {
+					// Silently handle auth initialization errors
+				}
+			}
+		};
+		
+		initializeAuth();
+	}, [checkAuth, checkingAuth]);
 
 	useEffect(() => {
 		if (!user) return;

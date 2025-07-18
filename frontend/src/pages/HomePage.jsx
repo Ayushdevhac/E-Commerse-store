@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import CategoryItem from "../components/CategoryItem";
 import { useProductStore } from "../stores/useProductStore";
 import useCategoryStore from "../stores/useCategoryStore";
+import { useUserStore } from "../stores/useUserStore";
 import FeaturedProducts from "../components/FeaturedProducts";
 // import TestPaymentComponent from "../components/TestPaymentComponent"; // Temporarily commented
 import { motion } from "framer-motion";
@@ -9,20 +10,38 @@ import { ShoppingBag, Truck, Shield, RefreshCw } from "lucide-react";
 
 const HomePage = () => {
 	const { fetchFeaturedProducts, products, isLoading } = useProductStore();
-	const { activeCategories, fetchActiveCategories } = useCategoryStore();	useEffect(() => {
+	const { activeCategories, fetchActiveCategories } = useCategoryStore();
+	const { checkAuth, user, checkingAuth } = useUserStore();
+
+	useEffect(() => {
+		// Only check auth if not already checking and no user
+		if (!user && !checkingAuth) {
+			checkAuth().catch(error => {
+				// Silently handle auth check failures
+			});
+		}
+		
 		fetchFeaturedProducts();
 		fetchActiveCategories();
-	}, [fetchFeaturedProducts, fetchActiveCategories]);
-		// Refresh featured products when user returns to the page
+	}, [fetchFeaturedProducts, fetchActiveCategories, checkAuth, user, checkingAuth]);
+
+	// Refresh featured products when user returns to the page
 	useEffect(() => {
 		const handleFocus = () => {
+			// Only check auth on focus if not already checking and no user
+			if (!user && !checkingAuth) {
+				checkAuth().catch(error => {
+					// Silently handle auth check failures
+				});
+			}
+			
 			fetchFeaturedProducts();
 			fetchActiveCategories();
 		};
 		
 		window.addEventListener('focus', handleFocus);
 		return () => window.removeEventListener('focus', handleFocus);
-	}, [fetchFeaturedProducts, fetchActiveCategories]);
+	}, [fetchFeaturedProducts, fetchActiveCategories, checkAuth, user, checkingAuth]);
 
 	return (
 		<div className='relative min-h-screen text-white pb-16'>
